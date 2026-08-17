@@ -7,13 +7,14 @@ import {
 } from '../lib/format'
 import { TASK_STATUS_COLORS } from '../lib/status'
 
-export default function TaskSection({ profile, today }) {
+export default function TaskSection({ profile, today, onExit }) {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [project, setProject] = useState('')
   const [taskName, setTaskName] = useState('')
   const [error, setError] = useState('')
+  const [taskMessage, setTaskMessage] = useState('')
   const [editing, setEditing] = useState(null)
 
   const loadTasks = useCallback(async () => {
@@ -35,6 +36,8 @@ export default function TaskSection({ profile, today }) {
   async function handleAddTask(e) {
     e.preventDefault()
     setError('')
+    setTaskMessage('')
+
     if (!project.trim() || !taskName.trim()) {
       setError('Project and task name are required.')
       return
@@ -45,6 +48,8 @@ export default function TaskSection({ profile, today }) {
       setProject('')
       setTaskName('')
       setShowForm(false)
+      setTaskMessage('✅ Task added successfully!')
+      setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
     } catch (err) {
       setError(err.message)
@@ -72,6 +77,8 @@ export default function TaskSection({ profile, today }) {
         status: editing.status,
       })
       setEditing(null)
+      setTaskMessage('✅ Task updated successfully!')
+      setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
     } catch (err) {
       setError(err.message)
@@ -82,6 +89,8 @@ export default function TaskSection({ profile, today }) {
     if (!confirm('Are you sure you want to delete this task?')) return
     try {
       await api.tasks.delete(taskId)
+      setTaskMessage('🗑️ Task removed.')
+      setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
     } catch (err) {
       setError(err.message)
@@ -102,15 +111,24 @@ export default function TaskSection({ profile, today }) {
     <section className="card">
       <div className="section-head">
         <h2 className="section-title">Today's Tasks ({tasks.length})</h2>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
-          {showForm ? 'Cancel' : '+ Add Task'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
+            {showForm ? '✖ Close Form' : '+ Add Task'}
+          </button>
+        </div>
       </div>
+
+      {taskMessage && (
+        <div className="success-msg" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{taskMessage}</span>
+          <button onClick={() => setTaskMessage('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}>&times;</button>
+        </div>
+      )}
 
       {error && <p className="form-error">{error}</p>}
 
       {showForm && (
-        <form onSubmit={handleAddTask} className="inline-form">
+        <form onSubmit={handleAddTask} className="inline-form" style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
           <label className="field">
             <span>Project Name</span>
             <input
@@ -131,7 +149,10 @@ export default function TaskSection({ profile, today }) {
               required
             />
           </label>
-          <button type="submit" className="btn btn-primary">Add Task</button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+            <button type="submit" className="btn btn-primary">Add Task</button>
+            <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>Cancel / Close</button>
+          </div>
         </form>
       )}
 

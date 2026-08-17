@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [loadingAtt, setLoadingAtt] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [attError, setAttError] = useState('')
+  const [attSuccessMsg, setAttSuccessMsg] = useState('')
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [liveElapsedMinutes, setLiveElapsedMinutes] = useState(null)
 
@@ -59,9 +60,11 @@ export default function Dashboard() {
   async function handleCheckIn() {
     setActionLoading(true)
     setAttError('')
+    setAttSuccessMsg('')
     try {
       const res = await api.attendance.checkIn(today)
       setAttendance(res.attendance)
+      setAttSuccessMsg('🟢 Checked In successfully! Your attendance is recorded. You can add your tasks below or exit.')
     } catch (err) {
       setAttError(err.message)
     } finally {
@@ -73,9 +76,11 @@ export default function Dashboard() {
     if (!attendance?.check_in) return
     setActionLoading(true)
     setAttError('')
+    setAttSuccessMsg('')
     try {
       const res = await api.attendance.checkOut(today)
       setAttendance(res.attendance)
+      setAttSuccessMsg('🏁 Checked Out successfully! Workday complete. You can now safely exit the portal.')
     } catch (err) {
       setAttError(err.message)
     } finally {
@@ -98,14 +103,50 @@ export default function Dashboard() {
           <button className="btn btn-outline" onClick={() => setShowPasswordModal(true)}>
             🔒 Change Password
           </button>
-          <button className="btn btn-outline" onClick={signOut}>
-            Logout
+          <button
+            className="btn btn-outline"
+            onClick={signOut}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+            title="Exit and Logout"
+          >
+            🚪 Exit / Logout
           </button>
         </div>
       </div>
 
+      {attSuccessMsg && (
+        <div
+          className="success-msg"
+          style={{
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '14px 18px',
+            borderRadius: '8px',
+          }}
+        >
+          <div>{attSuccessMsg}</div>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={signOut}
+            style={{ marginLeft: '16px', whiteSpace: 'nowrap', borderColor: '#16a34a', color: '#166534', background: '#ffffff' }}
+          >
+            🚪 Exit / Logout Now
+          </button>
+        </div>
+      )}
+
+      {/* Attendance Card */}
       <section className="card">
-        <h2 className="section-title">Today's Attendance</h2>
+        <div className="section-head">
+          <h2 className="section-title">Today's Attendance</h2>
+          {checkedOut && (
+            <span className="status-badge status-present">
+              ✅ Workday Finished
+            </span>
+          )}
+        </div>
 
         <div className="att-grid">
           <div className="att-field">
@@ -140,27 +181,67 @@ export default function Dashboard() {
 
         {attError && <p className="form-error">{attError}</p>}
 
-        <div className="att-actions">
+        <div className="att-actions" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             className="btn btn-primary"
             onClick={handleCheckIn}
             disabled={checkedIn || loadingAtt || actionLoading}
           >
-            {checkedIn ? (attendance?.check_in ? `Checked in at ${formatTime(attendance.check_in)}` : 'Check In') : 'CHECK IN'}
+            {checkedIn ? (attendance?.check_in ? `Checked in at ${formatTime(attendance.check_in)}` : 'Checked In') : 'CHECK IN'}
           </button>
           <button
             className="btn btn-primary"
             onClick={handleCheckOut}
             disabled={!checkedIn || checkedOut || loadingAtt || actionLoading}
           >
-            {checkedOut ? (attendance?.check_out ? `Checked out at ${formatTime(attendance.check_out)}` : 'Check Out') : 'CHECK OUT'}
+            {checkedOut ? (attendance?.check_out ? `Checked out at ${formatTime(attendance.check_out)}` : 'Checked Out') : 'CHECK OUT'}
+          </button>
+
+          {/* Quick Exit / Close Button right next to Check in/out */}
+          <button
+            className="btn btn-outline"
+            onClick={signOut}
+            title="Exit workforce portal and return to login"
+            style={{ marginLeft: 'auto' }}
+          >
+            🚪 Exit / Close Session
           </button>
         </div>
       </section>
 
-      <TaskSection profile={profile} today={today} />
+      {/* Task Section */}
+      <TaskSection profile={profile} today={today} onExit={signOut} />
 
+      {/* Attendance History */}
       <AttendanceHistory profile={profile} />
+
+      {/* Session Finish & Exit Section at bottom */}
+      <div
+        style={{
+          marginTop: '24px',
+          padding: '16px 20px',
+          background: '#f8fafc',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 600, color: '#1e293b' }}>Finished for now?</div>
+          <div style={{ fontSize: '13px', color: '#64748b' }}>
+            All your attendance timestamps and task updates are automatically saved.
+          </div>
+        </div>
+        <button
+          className="btn btn-outline"
+          onClick={signOut}
+          style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          🚪 Exit & Logout
+        </button>
+      </div>
 
       {showPasswordModal && (
         <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />
