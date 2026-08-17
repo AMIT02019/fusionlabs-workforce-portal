@@ -16,21 +16,25 @@ export default function TaskSection({ profile, today, onExit }) {
   const [error, setError] = useState('')
   const [taskMessage, setTaskMessage] = useState('')
   const [editing, setEditing] = useState(null)
+  const [viewFilter, setViewFilter] = useState('all') // 'all' or 'my'
 
-  const loadTasks = useCallback(async () => {
-    setLoading(true)
+  const loadTasks = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true)
     try {
       const res = await api.tasks.getToday(today)
       setTasks(res.tasks || [])
     } catch (err) {
-      setError(err.message)
+      if (!isBackground) setError(err.message)
     } finally {
-      setLoading(false)
+      if (!isBackground) setLoading(false)
     }
   }, [today])
 
   useEffect(() => {
     loadTasks()
+    // Poll every 8 seconds so everyone's live tasks update in real-time
+    const interval = setInterval(() => loadTasks(true), 8000)
+    return () => clearInterval(interval)
   }, [loadTasks])
 
   async function handleAddTask(e) {
@@ -60,6 +64,8 @@ export default function TaskSection({ profile, today, onExit }) {
     setError('')
     try {
       await api.tasks.update(task.id, { status: newStatus })
+      setTaskMessage(`✅ Task marked as "${newStatus}"!`)
+      setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
     } catch (err) {
       setError(err.message)
@@ -107,10 +113,37 @@ export default function TaskSection({ profile, today, onExit }) {
     })
   }
 
+  const displayedTasks = tasks.filter((t) => {
+    if (viewFilter === 'my') {
+      return t.user_id === profile?.id
+    }
+    return true
+  })
+
+  const myCount = tasks.filter((t) => t.user_id === profile?.id).length
+
   return (
     <section className="card">
       <div className="section-head">
-        <h2 className="section-title">Today's Tasks ({tasks.length})</h2>
+        <div>
+          <h2 className="section-title">Today's Team Tasks ({tasks.length})</h2>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+            <button
+              className={`btn btn-sm ${viewFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setViewFilter('all')}
+              style={{ fontSize: '11px', padding: '3px 10px' }}
+            >
+              👥 All Team Tasks ({tasks.length})
+            </button>
+            <button
+              className={`btn btn-sm ${viewFilter === 'my' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setViewFilter('my')}
+              style={{ fontSize: '11px', padding: '3px 10px' }}
+            >
+              👤 My Tasks ({myCount})
+            </button>
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
             {showForm ? '✖ Close Form' : '+ Add Task'}
@@ -158,14 +191,16 @@ export default function TaskSection({ profile, today, onExit }) {
 
       {loading ? (
         <p className="muted">Loading tasks…</p>
-      ) : tasks.length === 0 ? (
-        <p className="muted">No tasks added yet today.</p>
+      ) : displayedTasks.length === 0 ? (
+        <p className="muted">
+          {viewFilter === 'my' ? 'You have not added any tasks today.' : 'No tasks added yet by the team today.'}
+        </p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Employee</th>
+                <th>Team Member</th>
                 <th>Project</th>
                 <th>Task</th>
                 <th>Start Time</th>
@@ -176,12 +211,12 @@ export default function TaskSection({ profile, today, onExit }) {
               </tr>
             </thead>
             <tbody>
-              {tasks.map((task) => {
-                const isOwner = task.user_id === profile.id
+              {displayedTasks.map((task) => {
+                const isOwner = task.user_id === profile?.id
                 if (editing && editing.id === task.id) {
                   return (
                     <tr key={task.id}>
-                      <td>{task.user_name || '—'}</td>
+                      <td>{task.user_name || 'Team Member'}</td>
                       <td>
                         <input
                           type="text"
@@ -219,8 +254,9 @@ export default function TaskSection({ profile, today, onExit }) {
                 return (
                   <tr key={task.id}>
                     <td>
-                      {task.user_name || '—'}
+                      <strong>{task.user_name || 'Team Member'}</strong>
                       {isOwner && <span className="muted small-text"> (You)</span>}
+                      {task.user_email && <div className="muted small-text">{task.user_email}</div>}
                     </td>
                     <td><strong>{task.project_name}</strong></td>
                     <td>{task.task_name}</td>
@@ -245,7 +281,13 @@ export default function TaskSection({ profile, today, onExit }) {
                           <option>Completed</option>
                         </select>
                       ) : (
-                        <span className={`task-badge ${TASK_STATUS_COLORS[task.status]}`}>{task.status}</span>
+                        <span className={`task-badge ${TASK_STATUS_COLORS[task.status]}`}>
+                          {task.status === 'Completed'
+                            ? '🟢 Completed'
+                            : task.status === 'Half Done'
+                            ? '🟡 Half Done'
+                            : '🔴 Not Done'}
+                        </span>
                       )}
                     </td>
                     <td className="actions-cell">

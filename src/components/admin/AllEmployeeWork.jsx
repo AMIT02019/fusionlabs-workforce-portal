@@ -5,7 +5,6 @@ import {
   formatTime,
   formatDuration,
   dateKey,
-  minutesBetween,
 } from '../../lib/format'
 import { TASK_STATUS_COLORS } from '../../lib/status'
 import { exportToCSV } from '../../lib/export'
@@ -23,8 +22,8 @@ export default function AllEmployeeWork({ employees }) {
   const [projectFilter, setProjectFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true)
     try {
       const params = {}
       if (empFilter !== 'all') params.userId = empFilter
@@ -34,17 +33,20 @@ export default function AllEmployeeWork({ employees }) {
       const res = await api.tasks.getAll(params)
       setTasks(res.tasks || [])
     } catch (err) {
-      setError(err.message)
+      if (!isBackground) setError(err.message)
     } finally {
-      setLoading(false)
+      if (!isBackground) setLoading(false)
     }
   }, [empFilter, dateFilter, statusFilter])
 
   useEffect(() => {
     load()
+    // Real-time polling every 8 seconds so completed tasks reflect immediately
+    const interval = setInterval(() => load(true), 8000)
+    return () => clearInterval(interval)
   }, [load])
 
-  // Client-side filtering for search and project (text-based)
+  // Client-side filtering for search and project
   const filtered = tasks.filter((task) => {
     const empName = task.user_name || ''
     if (search && !empName.toLowerCase().includes(search.toLowerCase())) return false
@@ -52,11 +54,16 @@ export default function AllEmployeeWork({ employees }) {
     return true
   })
 
+  // Quick stats
+  const completedCount = filtered.filter((t) => t.status === 'Completed').length
+  const halfDoneCount = filtered.filter((t) => t.status === 'Half Done').length
+  const notDoneCount = filtered.filter((t) => t.status === 'Not Done').length
+
   // Export tasks to CSV
   function handleExportTasks() {
     const headers = ['Employee', 'Date', 'Project Name', 'Task Name', 'Start Time', 'End Time', 'Duration', 'Status']
     const rows = filtered.map((task) => [
-      task.user_name || 'Unknown',
+      task.user_name || 'Team Member',
       task.task_date,
       task.project_name,
       task.task_name,
@@ -65,7 +72,7 @@ export default function AllEmployeeWork({ employees }) {
       task.duration_minutes != null ? formatDuration(task.duration_minutes) : '--',
       task.status,
     ])
-    exportToCSV(`Work_Tasks_Report_${dateKey(new Date())}`, headers, rows)
+    exportToCSV(`Workforce_Tasks_Report_${dateKey(new Date())}`, headers, rows)
   }
 
   async function handleSaveEdit(e) {
@@ -111,10 +118,28 @@ export default function AllEmployeeWork({ employees }) {
   return (
     <section className="card">
       <div className="section-head">
-        <h2 className="section-title">All Employee Work ({filtered.length})</h2>
-        <button className="btn btn-outline btn-sm" onClick={handleExportTasks}>
-          📥 Export CSV
-        </button>
+        <div>
+          <h2 className="section-title">All Workforce Tasks ({filtered.length})</h2>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '12px' }}>
+            <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+              🟢 Completed: {completedCount}
+            </span>
+            <span style={{ background: '#fef9c3', color: '#854d0e', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+              🟡 Half Done: {halfDoneCount}
+            </span>
+            <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+              🔴 Not Done: {notDoneCount}
+            </span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-outline btn-sm" onClick={() => load()}>
+            🔄 Refresh
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={handleExportTasks}>
+            📥 Export CSV
+          </button>
+        </div>
       </div>
 
       {error && <p className="form-error" style={{ marginBottom: '16px' }}>{error}</p>}
@@ -154,18 +179,18 @@ export default function AllEmployeeWork({ employees }) {
         <label className="field">
           <span>Status</span>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">All</option>
-            <option>Completed</option>
-            <option>Half Done</option>
-            <option>Not Done</option>
+            <option value="all">All Statuses ({filtered.length})</option>
+            <option value="Completed">🟢 Completed ({completedCount})</option>
+            <option value="Half Done">🟡 Half Done ({halfDoneCount})</option>
+            <option value="Not Done">🔴 Not Done ({notDoneCount})</option>
           </select>
         </label>
       </div>
 
       {loading ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">Loading workforce tasks…</p>
       ) : filtered.length === 0 ? (
-        <p className="muted">No tasks found.</p>
+        <p className="muted">No tasks found matching your filters.</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
@@ -187,7 +212,7 @@ export default function AllEmployeeWork({ employees }) {
                 if (editing && editing.id === task.id) {
                   return (
                     <tr key={task.id}>
-                      <td>{task.user_name || '—'}</td>
+                      <td>{task.user_name || 'Team Member'}</td>
                       <td>{formatShortDate(task.task_date)}</td>
                       <td>
                         <input type="text" value={editing.project_name}
@@ -223,9 +248,12 @@ export default function AllEmployeeWork({ employees }) {
                 }
                 return (
                   <tr key={task.id}>
-                    <td>{task.user_name || '—'}</td>
+                    <td>
+                      <strong>{task.user_name || 'Team Member'}</strong>
+                      {task.user_email && <div className="muted small-text">{task.user_email}</div>}
+                    </td>
                     <td>{formatShortDate(task.task_date)}</td>
-                    <td>{task.project_name}</td>
+                    <td><strong>{task.project_name}</strong></td>
                     <td>{task.task_name}</td>
                     <td>{formatTime(task.start_time)}</td>
                     <td>{formatTime(task.end_time) || '--'}</td>

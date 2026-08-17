@@ -96,6 +96,35 @@ router.post('/register', (req, res) => {
   }
 })
 
+// POST /api/auth/forgot-password (Self-service password reset)
+router.post('/forgot-password', (req, res) => {
+  const { email, newPassword } = req.body
+
+  if (!email || !newPassword) {
+    return res.status(400).json({ error: 'Work email and new password are required' })
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' })
+  }
+
+  const cleanEmail = email.trim().toLowerCase()
+  const user = db.prepare('SELECT id, name, email FROM users WHERE lower(email) = ?').get(cleanEmail)
+
+  if (!user) {
+    return res.status(404).json({ error: 'No account found with this work email address' })
+  }
+
+  const password_hash = bcrypt.hashSync(newPassword, 10)
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, user.id)
+
+  console.log(`🔑 Password reset for user: ${user.name} (${user.email})`)
+
+  res.json({
+    message: `Password has been reset successfully for ${user.email}. You can now sign in with your new password.`
+  })
+})
+
 // GET /api/auth/me (Get current session user)
 router.get('/me', authenticateToken, (req, res) => {
   res.json({ user: req.user })

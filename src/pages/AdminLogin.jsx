@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
+import ForgotPasswordModal from '../components/ForgotPasswordModal'
 
 export default function AdminLogin() {
   const navigate = useNavigate()
@@ -10,11 +11,14 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('admin123')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [infoMessage, setInfoMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    setInfoMessage('')
 
     const cleanEmail = email.trim().toLowerCase()
     if (!cleanEmail || !password) {
@@ -45,6 +49,14 @@ export default function AdminLogin() {
     setEmail('admin@fusionlabs.com')
     setPassword('admin123')
     setError('')
+    setInfoMessage('')
+  }
+
+  function handlePasswordResetSuccess(resetEmail) {
+    setShowForgotPassword(false)
+    setEmail(resetEmail)
+    setPassword('')
+    setInfoMessage('✨ Admin password reset successfully! Please sign in with your new password.')
   }
 
   return (
@@ -57,6 +69,12 @@ export default function AdminLogin() {
         </div>
         <div className="admin-brand">FusionLabs Digital</div>
         <div className="admin-brand-sub">Management & Oversight Portal</div>
+
+        {infoMessage && (
+          <div className="success-msg" style={{ marginBottom: '16px', fontSize: '13px' }}>
+            {infoMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <label className="field">
@@ -106,6 +124,25 @@ export default function AdminLogin() {
             />
           </label>
 
+          <div style={{ textAlign: 'right', marginTop: '-8px', marginBottom: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--primary)',
+                fontSize: '12px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                padding: 0,
+                textDecoration: 'underline',
+              }}
+            >
+              Forgot password?
+            </button>
+          </div>
+
           {error && (
             <div className="form-error" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>⚠️</span>
@@ -137,6 +174,14 @@ export default function AdminLogin() {
           <Link to="/login">&larr; Switch to Employee Login</Link>
         </p>
       </div>
+
+      {showForgotPassword && (
+        <ForgotPasswordModal
+          initialEmail={email}
+          onClose={() => setShowForgotPassword(false)}
+          onSuccess={handlePasswordResetSuccess}
+        />
+      )}
     </div>
   )
 }

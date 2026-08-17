@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
+import ForgotPasswordModal from '../components/ForgotPasswordModal'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -14,6 +15,7 @@ export default function Login() {
   const [error, setError] = useState('')
   const [infoMessage, setInfoMessage] = useState(location.state?.message || '')
   const [loading, setLoading] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
 
   useEffect(() => {
     if (location.state?.registeredEmail) {
@@ -59,6 +61,13 @@ export default function Login() {
     setInfoMessage('')
   }
 
+  function handlePasswordResetSuccess(resetEmail) {
+    setShowForgotPassword(false)
+    setEmail(resetEmail)
+    setPassword('')
+    setInfoMessage('✨ Password reset successfully! Please sign in with your new password.')
+  }
+
   return (
     <div className="auth-screen">
       <div className="auth-card">
@@ -95,21 +104,23 @@ export default function Login() {
           <label className="field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>Password</span>
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--primary)',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  padding: 0,
-                }}
-              >
-                {showPassword ? 'Hide' : 'Show'}
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    padding: 0,
+                  }}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
             <input
               type={showPassword ? 'text' : 'password'}
@@ -123,6 +134,25 @@ export default function Login() {
               autoComplete="current-password"
             />
           </label>
+
+          <div style={{ textAlign: 'right', marginTop: '-8px', marginBottom: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--primary)',
+                fontSize: '12px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                padding: 0,
+                textDecoration: 'underline',
+              }}
+            >
+              Forgot password?
+            </button>
+          </div>
 
           {error && (
             <div className="form-error" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -159,6 +189,14 @@ export default function Login() {
           <Link to="/admin-login">Go to Admin Login &rarr;</Link>
         </p>
       </div>
+
+      {showForgotPassword && (
+        <ForgotPasswordModal
+          initialEmail={email}
+          onClose={() => setShowForgotPassword(false)}
+          onSuccess={handlePasswordResetSuccess}
+        />
+      )}
     </div>
   )
 }

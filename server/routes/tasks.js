@@ -16,17 +16,17 @@ function ensureUser(user) {
   } catch (e) {}
 }
 
-// GET /api/tasks/today (Shared team tasks for today)
+// GET /api/tasks/today (Shared team tasks for today - visible to everyone)
 router.get('/today', authenticateToken, (req, res) => {
   ensureUser(req.user)
   const dateStr = req.query.date || new Date().toISOString().split('T')[0]
 
   const tasks = db.prepare(`
-    SELECT t.*, u.name as user_name
+    SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
     FROM tasks t
-    JOIN users u ON t.user_id = u.id
+    LEFT JOIN users u ON t.user_id = u.id
     WHERE t.task_date = ?
-    ORDER BY t.start_time ASC
+    ORDER BY t.start_time ASC, t.created_at ASC
   `).all(dateStr)
 
   res.json({ tasks })
@@ -51,9 +51,9 @@ router.post('/', authenticateToken, (req, res) => {
   `).run(id, req.user.id, project_name.trim(), task_name.trim(), today, now)
 
   const task = db.prepare(`
-    SELECT t.*, u.name as user_name
+    SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
     FROM tasks t
-    JOIN users u ON t.user_id = u.id
+    LEFT JOIN users u ON t.user_id = u.id
     WHERE t.id = ?
   `).get(id)
 
@@ -103,9 +103,9 @@ router.put('/:id', authenticateToken, (req, res) => {
   `).run(finalProject, finalTask, finalStatus, finalStart, finalEnd, finalDuration, taskId)
 
   const updated = db.prepare(`
-    SELECT t.*, u.name as user_name
+    SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
     FROM tasks t
-    JOIN users u ON t.user_id = u.id
+    LEFT JOIN users u ON t.user_id = u.id
     WHERE t.id = ?
   `).get(taskId)
 
@@ -130,14 +130,14 @@ router.delete('/:id', authenticateToken, (req, res) => {
   res.json({ message: 'Task deleted successfully' })
 })
 
-// GET /api/tasks/all (Admin query for all workforce work with filters)
+// GET /api/tasks/all (Admin / Manager query for all workforce work with filters)
 router.get('/all', authenticateToken, (req, res) => {
   const { userId, date, status } = req.query
 
   let query = `
-    SELECT t.*, u.name as user_name
+    SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
     FROM tasks t
-    JOIN users u ON t.user_id = u.id
+    LEFT JOIN users u ON t.user_id = u.id
     WHERE 1=1
   `
   const params = []
@@ -155,7 +155,7 @@ router.get('/all', authenticateToken, (req, res) => {
     params.push(status)
   }
 
-  query += ` ORDER BY t.task_date DESC, t.start_time DESC`
+  query += ` ORDER BY t.task_date DESC, t.start_time DESC, t.created_at DESC`
 
   const tasks = db.prepare(query).all(...params)
   res.json({ tasks })
