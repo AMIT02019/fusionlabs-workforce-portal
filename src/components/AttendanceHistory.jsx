@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 import {
   formatShortDate,
   formatDay,
@@ -7,6 +7,7 @@ import {
   formatDuration,
 } from '../lib/format'
 import { statusClass } from '../lib/status'
+import { exportToCSV } from '../lib/export'
 
 export default function AttendanceHistory({ profile }) {
   const [rows, setRows] = useState([])
@@ -15,19 +16,14 @@ export default function AttendanceHistory({ profile }) {
   const load = useCallback(async () => {
     if (!profile) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('attendance')
-      .select('attendance_date, check_in, check_out, working_minutes, status')
-      .eq('user_id', profile.id)
-      .order('attendance_date', { ascending: false })
-      .limit(30)
-
-    if (error) {
+    try {
+      const res = await api.attendance.getHistory()
+      setRows(res.records || [])
+    } catch {
+      setRows([])
+    } finally {
       setLoading(false)
-      return
     }
-    setRows(data || [])
-    setLoading(false)
   }, [profile])
 
   useEffect(() => {
@@ -54,12 +50,30 @@ export default function AttendanceHistory({ profile }) {
     }
   }
 
+  function handleExportMyAttendance() {
+    const headers = ['Date', 'Day', 'Check In', 'Check Out', 'Working Hours', 'Status']
+    const csvRows = last14.map((r) => [
+      r.attendance_date,
+      formatDay(r.attendance_date),
+      r.check_in ? formatTime(r.check_in) : '--',
+      r.check_out ? formatTime(r.check_out) : '--',
+      r.working_minutes != null ? formatDuration(r.working_minutes) : '--',
+      r.status || 'ABSENT',
+    ])
+    exportToCSV(`My_Attendance_Last14Days`, headers, csvRows)
+  }
+
   return (
     <section className="card">
-      <h2 className="section-title">My Attendance</h2>
+      <div className="section-head">
+        <h2 className="section-title">My Recent Attendance (Last 14 Days)</h2>
+        <button className="btn btn-outline btn-sm" onClick={handleExportMyAttendance}>
+          📥 Export CSV
+        </button>
+      </div>
 
       {loading ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">Loading attendance history…</p>
       ) : last14.length === 0 ? (
         <p className="muted">No attendance records yet.</p>
       ) : (
@@ -78,14 +92,18 @@ export default function AttendanceHistory({ profile }) {
             <tbody>
               {last14.map((r, i) => (
                 <tr key={i}>
-                  <td>{formatShortDate(r.attendance_date)}</td>
+                  <td><strong>{formatShortDate(r.attendance_date)}</strong></td>
                   <td>{formatDay(r.attendance_date)}</td>
                   <td>{formatTime(r.check_in) || '--'}</td>
                   <td>{formatTime(r.check_out) || '--'}</td>
                   <td>{formatDuration(r.working_minutes) || '--'}</td>
                   <td>
                     <span className={`status-badge ${statusClass(r.status)}`}>
-                      {r.status || '--'}
+                      {r.status === 'PRESENT'
+                        ? '🟢 PRESENT'
+                        : r.status === 'HALF DAY'
+                        ? '🟡 HALF DAY'
+                        : '🔴 ABSENT'}
                     </span>
                   </td>
                 </tr>

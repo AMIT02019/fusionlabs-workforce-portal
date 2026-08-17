@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import {
   formatShortDate,
   formatDay,
@@ -7,12 +7,12 @@ import {
   formatDuration,
   dateKey,
   attendanceStatus,
-  minutesBetween,
 } from '../../lib/format'
 import { statusClass, TASK_STATUS_COLORS } from '../../lib/status'
+import { exportToCSV } from '../../lib/export'
 import ResetPasswordModal from './ResetPasswordModal'
 
-export default function EmployeeDetail({ employee, todayAttendance, session, onClose }) {
+export default function EmployeeDetail({ employee, todayAttendance, onClose }) {
   const [attendance, setAttendance] = useState([])
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
@@ -22,41 +22,31 @@ export default function EmployeeDetail({ employee, todayAttendance, session, onC
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [attRes, taskRes] = await Promise.all([
-      supabase
-        .from('attendance')
-        .select('attendance_date, check_in, check_out, working_minutes, status')
-        .eq('user_id', employee.id)
-        .order('attendance_date', { ascending: false }),
-      supabase
-        .from('tasks')
-        .select('id, user_id, project_name, task_name, task_date, start_time, end_time, duration_minutes, status')
-        .eq('user_id', employee.id)
-        .order('task_date', { ascending: false })
-        .order('start_time', { ascending: false }),
-    ])
-    setAttendance(attRes.data || [])
-    setTasks(taskRes.data || [])
-    setLoading(false)
+    try {
+      const res = await api.employees.getDetail(employee.id)
+      setAttendance(res.attendance || [])
+      setTasks(res.tasks || [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }, [employee.id])
 
   useEffect(() => {
     load()
   }, [load])
 
-  // Build attendance summary over working days (weekdays from join date to today)
+  // Build attendance summary over working days
   const joinDate = new Date(employee.created_at)
   const today = new Date()
   let workingDays = 0
-  const todayStatus = todayAttendance?.status || (todayAttendance?.working_minutes != null ? attendanceStatus(todayAttendance.working_minutes) : null)
 
-  // Count weekdays from join date to today (inclusive)
   for (let d = new Date(joinDate); d <= today; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay()
     if (dow !== 0 && dow !== 6) workingDays++
   }
 
-  // But if joined today, at least 1 working day
   if (workingDays === 0) workingDays = 1
 
   let presentCount = 0
@@ -64,14 +54,12 @@ export default function EmployeeDetail({ employee, todayAttendance, session, onC
   let absentCount = 0
   let totalMinutes = 0
 
-  // Build a map of attendance by date
   const attByDate = {}
   attendance.forEach((r) => { attByDate[r.attendance_date] = r })
 
-  // Count from join date to today
   for (let d = new Date(joinDate); d <= today; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay()
-    if (dow === 0 || dow === 6) continue // weekend
+    if (dow === 0 || dow === 6) continue
     const key = dateKey(d)
     const rec = attByDate[key]
     const stat = rec?.status || attendanceStatus(rec?.working_minutes)
@@ -85,62 +73,61 @@ export default function EmployeeDetail({ employee, todayAttendance, session, onC
     ? (((presentCount + halfdayCount * 0.5) / workingDays) * 100).toFixed(1)
     : '0.0'
 
+  function handleExportEmployeeAttendance() {
+    const headers = ['Date', 'Day', 'Check In', 'Check Out', 'Working Hours', 'Status']
+    const rows = attendance.map((r) => [
+      r.attendance_date,
+      formatDay(r.attendance_date),
+      r.check_in ? formatTime(r.check_in) : '--',
+      r.check_out ? formatTime(r.check_out) : '--',
+      r.working_minutes != null ? formatDuration(r.working_minutes) : '--',
+      r.status || attendanceStatus(r.working_minutes),
+    ])
+    exportToCSV(`${employee.name.replace(/\s+/g, '_')}_Attendance_Report`, headers, rows)
+  }
+
+  function handleExportEmployeeTasks() {
+    const headers = ['Date', 'Day', 'Project', 'Task', 'Start Time', 'End Time', 'Duration', 'Status']
+    const rows = tasks.map((t) => [
+      t.task_date,
+      formatDay(t.task_date),
+      t.project_name,
+      t.task_name,
+      t.start_time ? formatTime(t.start_time) : '--',
+      t.end_time ? formatTime(t.end_time) : '--',
+      t.duration_minutes != null ? formatDuration(t.duration_minutes) : '--',
+      t.status,
+    ])
+    exportToCSV(`${employee.name.replace(/\s+/g, '_')}_Tasks_Report`, headers, rows)
+  }
+
   async function handleSaveTaskEdit(e) {
     e.preventDefault()
     setError('')
-    
-    const task = tasks.find((t) => t.id === editingTask.id)
-    if (!task) return
 
-    const updates = {
-      project_name: editingTask.project_name.trim(),
-      task_name: editingTask.task_name.trim(),
-      status: editingTask.status,
+    try {
+      await api.tasks.update(editingTask.id, {
+        project_name: editingTask.project_name.trim(),
+        task_name: editingTask.task_name.trim(),
+        status: editingTask.status,
+        start_time: editingTask.start_time,
+        end_time: editingTask.end_time || null,
+      })
+      setEditingTask(null)
+      await load()
+    } catch (err) {
+      setError(err.message)
     }
-
-    // Determine start_time
-    let finalStartTime = task.start_time
-    if (editingTask.start_time) {
-      finalStartTime = combineDateTime(task.task_date, editingTask.start_time)
-      updates.start_time = finalStartTime
-    }
-
-    // Handle end_time and duration based on status
-    if (editingTask.status === 'Completed') {
-      if (editingTask.end_time) {
-        const finalEndTime = combineDateTime(task.task_date, editingTask.end_time)
-        updates.end_time = finalEndTime
-        updates.duration_minutes = minutesBetween(finalStartTime, finalEndTime)
-      } else if (task.end_time) {
-        updates.duration_minutes = minutesBetween(finalStartTime, task.end_time)
-      } else {
-        const now = new Date()
-        updates.end_time = now.toISOString()
-        updates.duration_minutes = minutesBetween(finalStartTime, now)
-      }
-    } else {
-      // Clear end_time and duration for non-completed tasks
-      updates.end_time = null
-      updates.duration_minutes = null
-    }
-
-    const { error: uErr } = await supabase.from('tasks').update(updates).eq('id', editingTask.id)
-    if (uErr) {
-      setError(uErr.message)
-      return
-    }
-    setEditingTask(null)
-    await load()
   }
 
   async function handleDeleteTask(taskId) {
     if (!confirm('Are you sure you want to delete this task?')) return
-    const { error: dErr } = await supabase.from('tasks').delete().eq('id', taskId)
-    if (dErr) {
-      setError(dErr.message)
-      return
+    try {
+      await api.tasks.delete(taskId)
+      await load()
+    } catch (err) {
+      setError(err.message)
     }
-    await load()
   }
 
   function startEdit(task) {
@@ -149,8 +136,8 @@ export default function EmployeeDetail({ employee, todayAttendance, session, onC
       project_name: task.project_name,
       task_name: task.task_name,
       status: task.status,
-      start_time: formatTimeInput(task.start_time),
-      end_time: task.end_time ? formatTimeInput(task.end_time) : '',
+      start_time: task.start_time,
+      end_time: task.end_time || '',
     })
   }
 
@@ -210,9 +197,17 @@ export default function EmployeeDetail({ employee, todayAttendance, session, onC
             </div>
           </div>
 
-          <button className="btn btn-outline btn-sm" style={{ marginBottom: '20px' }} onClick={() => setShowReset(true)}>
-            Reset Password
-          </button>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <button className="btn btn-outline btn-sm" onClick={() => setShowReset(true)}>
+              🔑 Reset Password
+            </button>
+            <button className="btn btn-outline btn-sm" onClick={handleExportEmployeeAttendance}>
+              📥 Export Attendance
+            </button>
+            <button className="btn btn-outline btn-sm" onClick={handleExportEmployeeTasks}>
+              📥 Export Tasks
+            </button>
+          </div>
 
           {/* Attendance summary */}
           <h3 className="section-title">Attendance Summary</h3>
@@ -248,7 +243,7 @@ export default function EmployeeDetail({ employee, todayAttendance, session, onC
           {loading ? (
             <p className="muted">Loading…</p>
           ) : attendance.length === 0 ? (
-            <p className="muted">No attendance records yet.</p>
+            <p className="muted" style={{ marginBottom: '20px' }}>No attendance records found.</p>
           ) : (
             <div className="table-wrap" style={{ marginBottom: '24px' }}>
               <table className="data-table">
@@ -296,7 +291,7 @@ export default function EmployeeDetail({ employee, todayAttendance, session, onC
           {loading ? (
             <p className="muted">Loading…</p>
           ) : tasks.length === 0 ? (
-            <p className="muted">No tasks yet.</p>
+            <p className="muted">No tasks recorded yet.</p>
           ) : (
             <div className="table-wrap">
               <table className="data-table">
@@ -388,22 +383,8 @@ export default function EmployeeDetail({ employee, todayAttendance, session, onC
       </div>
 
       {showReset && (
-        <ResetPasswordModal employee={employee} session={session} onClose={() => setShowReset(false)} />
+        <ResetPasswordModal employee={employee} onClose={() => setShowReset(false)} />
       )}
     </div>
   )
-}
-
-// "HH:MM" for <input type="time">
-function formatTimeInput(t) {
-  if (!t) return ''
-  const d = new Date(t)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-function combineDateTime(dateStr, timeStr) {
-  const [h, m] = timeStr.split(':').map(Number)
-  const d = new Date(dateStr + 'T00:00:00')
-  d.setHours(h, m, 0, 0)
-  return d.toISOString()
 }

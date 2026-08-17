@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import { formatLongDate, formatTime, formatDuration, dateKey, attendanceStatus } from '../../lib/format'
-import { statusClass, calCellClass, calDotClass } from '../../lib/status'
+import { calCellClass, calDotClass } from '../../lib/status'
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -12,11 +12,11 @@ const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export default function AttendanceCalendar({ employees }) {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth()) // 0-indexed
+  const [month, setMonth] = useState(today.getMonth())
   const [selectedEmpId, setSelectedEmpId] = useState('all')
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
-  const [detail, setDetail] = useState(null) // { date, status, record, empName }
+  const [detail, setDetail] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -24,19 +24,14 @@ export default function AttendanceCalendar({ employees }) {
     const lastDay = new Date(year, month + 1, 0).getDate()
     const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-    let query = supabase
-      .from('attendance')
-      .select('user_id, attendance_date, check_in, check_out, working_minutes, status')
-      .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate)
-
-    if (selectedEmpId !== 'all') {
-      query = query.eq('user_id', selectedEmpId)
+    try {
+      const res = await api.attendance.getAdminCalendar(startDate, endDate, selectedEmpId)
+      setRecords(res.records || [])
+    } catch {
+      setRecords([])
+    } finally {
+      setLoading(false)
     }
-
-    const { data, error } = await query
-    if (!error) setRecords(data || [])
-    setLoading(false)
   }, [year, month, selectedEmpId])
 
   useEffect(() => {
@@ -63,48 +58,44 @@ export default function AttendanceCalendar({ employees }) {
 
   // Build calendar grid. Monday-first.
   const firstDay = new Date(year, month, 1)
-  const firstDow = (firstDay.getDay() + 6) % 7 // 0 = Monday
+  const firstDow = (firstDay.getDay() + 6) % 7
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const todayKey = dateKey(today)
 
-  // Map records by date. For "all employees" mode, aggregate per date.
-  // For single employee, direct map.
   const byDate = {}
   if (selectedEmpId === 'all') {
-    // Aggregate: for each date, collect statuses of all employees
     const dateStatuses = {}
     records.forEach((r) => {
       if (!dateStatuses[r.attendance_date]) dateStatuses[r.attendance_date] = []
       dateStatuses[r.attendance_date].push(r)
     })
-    // For the calendar cell color, use the "worst" status present that day
-    // (absent > halfday > present for visibility), but actually show a
-    // multi-dot if mixed. Simplify: show a blended dot if any present/half/absent.
     Object.keys(dateStatuses).forEach((d) => {
       const statuses = dateStatuses[d].map((r) => r.status || attendanceStatus(r.working_minutes))
       byDate[d] = { statuses, records: dateStatuses[d] }
     })
   } else {
     records.forEach((r) => {
-      byDate[r.attendance_date] = { statuses: [r.status || attendanceStatus(r.working_minutes)], records: [r] }
+      byDate[r.attendance_date] = {
+        statuses: [r.status || attendanceStatus(r.working_minutes)],
+        records: [r],
+      }
     })
   }
 
-  const empName = selectedEmpId === 'all'
-    ? 'All Employees'
-    : employees.find((e) => e.id === selectedEmpId)?.name || 'Employee'
+  const empName =
+    selectedEmpId === 'all'
+      ? 'All Employees'
+      : employees.find((e) => e.id === selectedEmpId)?.name || 'Employee'
 
   function cellStatus(dateStr) {
     const entry = byDate[dateStr]
     if (!entry) {
-      // No record — absent if it's a past weekday
       const d = new Date(dateStr + 'T00:00:00')
       const dow = d.getDay()
-      if (dow === 0 || dow === 6) return null // weekend
-      if (dateStr >= todayKey) return null // today or future — no absent
+      if (dow === 0 || dow === 6) return null
+      if (dateStr >= todayKey) return null
       return 'ABSENT'
     }
-    // For all-employees view, pick the dominant status for cell color
     const s = entry.statuses
     if (s.includes('PRESENT')) return 'PRESENT'
     if (s.includes('HALF DAY')) return 'HALF DAY'
@@ -130,7 +121,6 @@ export default function AttendanceCalendar({ employees }) {
     })
   }
 
-  // Build cells
   const cells = []
   for (let i = 0; i < firstDow; i++) cells.push(null)
   for (let day = 1; day <= daysInMonth; day++) {
@@ -275,13 +265,13 @@ function CalendarDetailModal({ detail, employees, selectedEmpId, onClose }) {
 
                   return (
                     <tr key={emp.id}>
-                      {!isSingle && <td>{emp.name}</td>}
+                      {!isSingle && <td><strong>{emp.name}</strong></td>}
                       <td>{r?.check_in ? formatTime(r.check_in) : '--'}</td>
                       <td>{r?.check_out ? formatTime(r.check_out) : '--'}</td>
                       <td>{r?.working_minutes != null ? formatDuration(r.working_minutes) : '--'}</td>
                       <td>
                         {status ? (
-                          <span className={`status-badge ${statusClass(status)}`}>
+                          <span className={`status-badge ${status === 'PRESENT' ? 'status-present' : status === 'HALF DAY' ? 'status-halfday' : 'status-absent'}`}>
                             {status === 'PRESENT'
                               ? '🟢 PRESENT'
                               : status === 'HALF DAY'

@@ -1,64 +1,31 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 import {
   formatTime,
   formatDuration,
-  dateKey,
   minutesBetween,
 } from '../lib/format'
 import { TASK_STATUS_COLORS } from '../lib/status'
 
 export default function TaskSection({ profile, today }) {
   const [tasks, setTasks] = useState([])
-  const [profiles, setProfiles] = useState({})
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [project, setProject] = useState('')
   const [taskName, setTaskName] = useState('')
   const [error, setError] = useState('')
-  const [editing, setEditing] = useState(null) // { id, project_name, task_name, status }
+  const [editing, setEditing] = useState(null)
 
   const loadTasks = useCallback(async () => {
     setLoading(true)
-    // Everyone's tasks for today (shared visibility)
-    const { data, error } = await supabase
-      .from('tasks')
-      .select(`
-        id,
-        user_id,
-        project_name,
-        task_name,
-        task_date,
-        start_time,
-        end_time,
-        duration_minutes,
-        status,
-        updated_at
-      `)
-      .eq('task_date', today)
-      .order('start_time', { ascending: true })
-
-    if (error) {
-      setError(error.message)
+    try {
+      const res = await api.tasks.getToday(today)
+      setTasks(res.tasks || [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
       setLoading(false)
-      return
     }
-
-    setTasks(data || [])
-
-    // Fetch all profiles to map user_id -> name (shared visibility needs names)
-    const userIds = [...new Set((data || []).map((t) => t.user_id))]
-    if (userIds.length) {
-      const { data: profData } = await supabase
-        .from('profiles')
-        .select('id, name')
-        .in('id', userIds)
-      const map = {}
-      ;(profData || []).forEach((p) => { map[p.id] = p.name })
-      setProfiles(map)
-    }
-
-    setLoading(false)
   }, [today])
 
   useEffect(() => {
@@ -72,79 +39,53 @@ export default function TaskSection({ profile, today }) {
       setError('Project and task name are required.')
       return
     }
-    const now = new Date().toISOString()
-    const { error } = await supabase.from('tasks').insert({
-      user_id: profile.id,
-      project_name: project.trim(),
-      task_name: taskName.trim(),
-      task_date: today,
-      start_time: now,
-      status: 'Not Done',
-    })
-    if (error) {
-      setError(error.message)
-      return
+
+    try {
+      await api.tasks.create(project.trim(), taskName.trim(), today)
+      setProject('')
+      setTaskName('')
+      setShowForm(false)
+      await loadTasks()
+    } catch (err) {
+      setError(err.message)
     }
-    setProject('')
-    setTaskName('')
-    setShowForm(false)
-    await loadTasks()
   }
 
   async function handleStatusChange(task, newStatus) {
     setError('')
-    const updates = { status: newStatus }
-
-    if (newStatus === 'Completed' && !task.end_time) {
-      const now = new Date()
-      updates.end_time = now.toISOString()
-      updates.duration_minutes = minutesBetween(task.start_time, now)
+    try {
+      await api.tasks.update(task.id, { status: newStatus })
+      await loadTasks()
+    } catch (err) {
+      setError(err.message)
     }
-
-    const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    await loadTasks()
   }
 
   async function handleSaveEdit(e) {
     e.preventDefault()
     setError('')
-    const updates = {
-      project_name: editing.project_name.trim(),
-      task_name: editing.task_name.trim(),
-    }
 
-    // Status change handled via the same path
-    if (editing.status !== editing._originalStatus) {
-      updates.status = editing.status
-      const task = tasks.find((t) => t.id === editing.id)
-      if (editing.status === 'Completed' && task && !task.end_time) {
-        const now = new Date()
-        updates.end_time = now.toISOString()
-        updates.duration_minutes = minutesBetween(task.start_time, now)
-      }
+    try {
+      await api.tasks.update(editing.id, {
+        project_name: editing.project_name.trim(),
+        task_name: editing.task_name.trim(),
+        status: editing.status,
+      })
+      setEditing(null)
+      await loadTasks()
+    } catch (err) {
+      setError(err.message)
     }
-
-    const { error } = await supabase.from('tasks').update(updates).eq('id', editing.id)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    setEditing(null)
-    await loadTasks()
   }
 
   async function handleDelete(taskId) {
-    if (!confirm('Delete this task?')) return
-    const { error } = await supabase.from('tasks').delete().eq('id', taskId)
-    if (error) {
-      setError(error.message)
-      return
+    if (!confirm('Are you sure you want to delete this task?')) return
+    try {
+      await api.tasks.delete(taskId)
+      await loadTasks()
+    } catch (err) {
+      setError(err.message)
     }
-    await loadTasks()
   }
 
   function startEdit(task) {
@@ -160,7 +101,7 @@ export default function TaskSection({ profile, today }) {
   return (
     <section className="card">
       <div className="section-head">
-        <h2 className="section-title">Today's Tasks</h2>
+        <h2 className="section-title">Today's Tasks ({tasks.length})</h2>
         <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
           {showForm ? 'Cancel' : '+ Add Task'}
         </button>
@@ -174,6 +115,7 @@ export default function TaskSection({ profile, today }) {
             <span>Project Name</span>
             <input
               type="text"
+              placeholder="e.g. Website Redesign"
               value={project}
               onChange={(e) => setProject(e.target.value)}
               required
@@ -183,6 +125,7 @@ export default function TaskSection({ profile, today }) {
             <span>Task Name</span>
             <input
               type="text"
+              placeholder="e.g. Design homepage layout"
               value={taskName}
               onChange={(e) => setTaskName(e.target.value)}
               required
@@ -217,7 +160,7 @@ export default function TaskSection({ profile, today }) {
                 if (editing && editing.id === task.id) {
                   return (
                     <tr key={task.id}>
-                      <td>{profiles[task.user_id] || '—'}</td>
+                      <td>{task.user_name || '—'}</td>
                       <td>
                         <input
                           type="text"
@@ -254,12 +197,21 @@ export default function TaskSection({ profile, today }) {
                 }
                 return (
                   <tr key={task.id}>
-                    <td>{profiles[task.user_id] || '—'}</td>
-                    <td>{task.project_name}</td>
+                    <td>
+                      {task.user_name || '—'}
+                      {isOwner && <span className="muted small-text"> (You)</span>}
+                    </td>
+                    <td><strong>{task.project_name}</strong></td>
                     <td>{task.task_name}</td>
                     <td>{formatTime(task.start_time)}</td>
                     <td>{formatTime(task.end_time) || '--'}</td>
-                    <td>{formatDuration(task.duration_minutes) || '--'}</td>
+                    <td>
+                      {task.duration_minutes != null
+                        ? formatDuration(task.duration_minutes)
+                        : task.status === 'Completed'
+                        ? '0m'
+                        : `${formatDuration(minutesBetween(task.start_time, new Date()))} (active)`}
+                    </td>
                     <td>
                       {isOwner ? (
                         <select

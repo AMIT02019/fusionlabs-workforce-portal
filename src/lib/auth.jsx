@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { api, setToken } from './api'
 
 const AuthContext = createContext(null)
 
@@ -8,54 +8,57 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  async function loadProfile(sess) {
-    if (!sess?.user) {
-      setProfile(null)
-      return null
-    }
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, name, email, role')
-      .eq('id', sess.user.id)
-      .maybeSingle()
+  async function loadUser() {
+    try {
+      const token = localStorage.getItem('fusionlabs_token')
+      if (!token) {
+        setSession(null)
+        setProfile(null)
+        setLoading(false)
+        return
+      }
 
-    if (error) {
+      const res = await api.auth.me()
+      if (res?.user) {
+        setSession({ user: res.user, token })
+        setProfile(res.user)
+      } else {
+        setToken(null)
+        setSession(null)
+        setProfile(null)
+      }
+    } catch {
+      setToken(null)
+      setSession(null)
       setProfile(null)
-      return null
+    } finally {
+      setLoading(false)
     }
-    setProfile(data)
-    return data
   }
 
   useEffect(() => {
-    let mounted = true
-
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!mounted) return
-      setSession(data.session)
-      await loadProfile(data.session)
-      setLoading(false)
-    })
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess)
-      ;(async () => {
-        await loadProfile(sess)
-      })()
-    })
-
-    return () => {
-      mounted = false
-      sub.subscription.unsubscribe()
-    }
+    loadUser()
   }, [])
+
+  function signIn(user, token) {
+    setToken(token)
+    setSession({ user, token })
+    setProfile(user)
+  }
+
+  function signOut() {
+    setToken(null)
+    setSession(null)
+    setProfile(null)
+  }
 
   const value = {
     session,
     profile,
     loading,
     setProfile,
-    signOut: () => supabase.auth.signOut(),
+    signIn,
+    signOut,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

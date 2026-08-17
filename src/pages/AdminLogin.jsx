@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
 
 export default function AdminLogin() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const { signIn } = useAuth()
+  const [email, setEmail] = useState('admin@fusionlabs.com')
+  const [password, setPassword] = useState('admin123')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -14,43 +16,40 @@ export default function AdminLogin() {
     setError('')
     setLoading(true)
 
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    try {
+      const res = await api.auth.login(email, password)
 
-    if (signInError) {
-      setError('Invalid email or password.')
+      if (res.user?.role !== 'admin') {
+        setError('Access denied: This account is not an administrator.')
+        setLoading(false)
+        return
+      }
+
+      signIn(res.user, res.token)
+      navigate('/admin', { replace: true })
+    } catch (err) {
+      setError(err.message || 'Invalid administrator email or password.')
       setLoading(false)
-      return
     }
-
-    // Verify the account is actually an admin before routing.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', data.user.id)
-      .maybeSingle()
-
-    if (!profile || profile.role !== 'admin') {
-      // Not an admin — sign them out and deny access.
-      await supabase.auth.signOut()
-      setError('Access denied. This login is for administrators only.')
-      setLoading(false)
-      return
-    }
-
-    navigate('/admin', { replace: true })
   }
 
   return (
     <div className="auth-screen">
       <div className="admin-login-card">
+        <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+          <span className="home-brand-badge" style={{ background: '#fef2f2', color: '#dc2626', borderColor: '#fecdd3' }}>
+            🛡️ ADMIN ACCESS
+          </span>
+        </div>
         <div className="admin-brand">FusionLabs Digital</div>
-        <div className="admin-brand-sub">Admin Login</div>
+        <div className="admin-brand-sub">Management & Oversight Portal</div>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <label className="field">
-            <span>Email</span>
+            <span>Admin Email</span>
             <input
               type="email"
+              placeholder="admin@fusionlabs.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -59,9 +58,10 @@ export default function AdminLogin() {
           </label>
 
           <label className="field">
-            <span>Password</span>
+            <span>Admin Password</span>
             <input
               type="password"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -71,13 +71,19 @@ export default function AdminLogin() {
 
           {error && <p className="form-error">{error}</p>}
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? 'Logging in...' : 'Login'}
+          <button type="submit" className="btn btn-primary btn-block" disabled={loading} style={{ marginTop: '8px' }}>
+            {loading ? 'Authenticating...' : 'Sign In as Admin'}
           </button>
         </form>
 
+        <div style={{ marginTop: '20px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px', color: '#64748b' }}>
+          <strong>Default Admin Credentials:</strong><br />
+          Email: <code>admin@fusionlabs.com</code><br />
+          Password: <code>admin123</code>
+        </div>
+
         <p className="admin-back">
-          <Link to="/login">Employee login</Link>
+          <Link to="/login">&larr; Switch to Employee Login</Link>
         </p>
       </div>
     </div>

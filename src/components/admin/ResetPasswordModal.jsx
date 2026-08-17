@@ -1,7 +1,7 @@
 import { useState } from 'react'
-// ResetPasswordModal calls the edge function via fetch; no direct supabase import needed.
+import { api } from '../../lib/api'
 
-export default function ResetPasswordModal({ employee, onClose, session }) {
+export default function ResetPasswordModal({ employee, onClose }) {
   const [newPassword, setNewPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -19,30 +19,11 @@ export default function ResetPasswordModal({ employee, onClose, session }) {
     setLoading(true)
 
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-reset-password`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ userId: employee.id, newPassword }),
-        }
-      )
-
-      const data = await res.json()
-
-      if (!res.ok || data.error) {
-        setError(data.error || 'Failed to reset password.')
-        setLoading(false)
-        return
-      }
-
+      await api.auth.adminResetPassword(employee.id, newPassword)
       setSuccess(true)
       setLoading(false)
-    } catch {
-      setError('Network error. Please try again.')
+    } catch (err) {
+      setError(err.message || 'Failed to reset password.')
       setLoading(false)
     }
   }
@@ -63,7 +44,7 @@ export default function ResetPasswordModal({ employee, onClose, session }) {
           ) : (
             <>
               <p className="muted" style={{ marginBottom: '16px' }}>
-                Set a new temporary password for <strong>{employee.name}</strong> ({employee.email}).
+                Set a new password for <strong>{employee.name}</strong> ({employee.email}).
               </p>
               <form onSubmit={handleSubmit} className="auth-form">
                 <label className="field">
@@ -75,6 +56,7 @@ export default function ResetPasswordModal({ employee, onClose, session }) {
                     required
                     minLength={6}
                     autoFocus
+                    placeholder="Min 6 characters"
                   />
                 </label>
                 {error && <p className="form-error">{error}</p>}
@@ -83,16 +65,14 @@ export default function ResetPasswordModal({ employee, onClose, session }) {
           )}
         </div>
 
-        {!success && (
+        {!success ? (
           <div className="modal-footer">
             <button className="btn btn-outline" onClick={onClose}>Cancel</button>
             <button className="btn btn-primary" onClick={handleSubmit} disabled={loading}>
               {loading ? 'Resetting...' : 'Reset Password'}
             </button>
           </div>
-        )}
-
-        {success && (
+        ) : (
           <div className="modal-footer">
             <button className="btn btn-primary" onClick={onClose}>Done</button>
           </div>
