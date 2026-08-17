@@ -60,6 +60,12 @@ export const api = {
         body: JSON.stringify({ newPassword }),
       }),
 
+    updateAdminProfile: ({ name, email, newPassword }) =>
+      request('/auth/admin-profile', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, newPassword }),
+      }),
+
     adminResetPassword: (userId, newPassword) =>
       request('/auth/admin-reset-password', {
         method: 'POST',

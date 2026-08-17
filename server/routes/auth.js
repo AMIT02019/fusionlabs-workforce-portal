@@ -82,7 +82,7 @@ router.post('/register', (req, res) => {
     )
 
     res.status(201).json({
-      message: 'Account created successfully',
+      message: 'Account created successfully. Please sign in with your credentials.',
       token,
       user: {
         id,
@@ -113,6 +113,69 @@ router.post('/change-password', authenticateToken, (req, res) => {
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, req.user.id)
 
   res.json({ message: 'Password updated successfully' })
+})
+
+// POST /api/auth/admin-profile (Admin updates own ID / email, name, and/or password)
+router.post('/admin-profile', authenticateToken, requireAdmin, (req, res) => {
+  const { name, email, newPassword } = req.body
+
+  const adminId = req.user.id
+  const currentAdmin = db.prepare('SELECT * FROM users WHERE id = ?').get(adminId)
+  if (!currentAdmin) {
+    return res.status(404).json({ error: 'Admin account not found' })
+  }
+
+  let finalName = name?.trim() || currentAdmin.name
+  let finalEmail = email?.trim().toLowerCase() || currentAdmin.email
+  let finalPasswordHash = currentAdmin.password_hash
+
+  // Check email uniqueness if email is changed
+  if (finalEmail !== currentAdmin.email.toLowerCase()) {
+    const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ? AND id != ?').get(finalEmail, adminId)
+    if (existing) {
+      return res.status(409).json({ error: 'This email address is already in use by another account' })
+    }
+  }
+
+  // Update password if provided
+  if (newPassword) {
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' })
+    }
+    finalPasswordHash = bcrypt.hashSync(newPassword, 10)
+  }
+
+  try {
+    db.prepare(`
+      UPDATE users 
+      SET name = ?, email = ?, password_hash = ?
+      WHERE id = ?
+    `).run(finalName, finalEmail, finalPasswordHash, adminId)
+
+    const updatedUser = {
+      id: adminId,
+      name: finalName,
+      email: finalEmail,
+      role: 'admin',
+      created_at: currentAdmin.created_at,
+    }
+
+    const token = jwt.sign(
+      { id: adminId, name: finalName, email: finalEmail, role: 'admin' },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    )
+
+    console.log(`🛡️ Admin profile updated: Name: "${finalName}", Email: "${finalEmail}"`)
+
+    res.json({
+      message: 'Admin credentials updated successfully.',
+      token,
+      user: updatedUser,
+    })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update admin profile: ' + err.message })
+  }
 })
 
 // POST /api/auth/admin-reset-password (Admin resets an employee's password)

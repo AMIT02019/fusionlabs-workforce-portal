@@ -1,15 +1,14 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 
 export default function Register() {
   const navigate = useNavigate()
-  const { signIn } = useAuth()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -17,6 +16,14 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanName = name.trim()
+
+    if (!cleanName || !cleanEmail || !password) {
+      setError('Please fill in all required fields.')
+      return
+    }
 
     if (password !== confirm) {
       setError('Passwords do not match.')
@@ -30,13 +37,21 @@ export default function Register() {
     setLoading(true)
 
     try {
-      const res = await api.auth.register(name, email, password)
+      await api.auth.register(cleanName, cleanEmail, password)
       setLoading(false)
       setSuccess(true)
-      signIn(res.user, res.token)
-      setTimeout(() => navigate('/dashboard', { replace: true }), 1500)
+      // Navigate to login page so user logs in with their newly created credentials
+      setTimeout(() => {
+        navigate('/login', {
+          replace: true,
+          state: {
+            registeredEmail: cleanEmail,
+            message: '✨ Account created successfully! Please sign in with your email and password.',
+          },
+        })
+      }, 1500)
     } catch (err) {
-      setError(err.message || 'Failed to create account.')
+      setError(err.message || 'Failed to create account. Please try again.')
       setLoading(false)
     }
   }
@@ -45,10 +60,27 @@ export default function Register() {
     return (
       <div className="auth-screen">
         <div className="auth-card">
-          <div className="success-msg">
-            ✨ Account created successfully!
+          <div className="success-msg" style={{ padding: '16px', borderRadius: '8px' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>
+              ✨ Account Created Successfully!
+            </div>
+            <div>Redirecting you to the login page to sign in…</div>
           </div>
-          <p className="auth-switch" style={{ marginTop: '16px' }}>Redirecting to your dashboard…</p>
+          <button
+            className="btn btn-primary btn-block"
+            style={{ marginTop: '20px' }}
+            onClick={() =>
+              navigate('/login', {
+                replace: true,
+                state: {
+                  registeredEmail: email.trim().toLowerCase(),
+                  message: '✨ Account created successfully! Please sign in.',
+                },
+              })
+            }
+          >
+            Go to Login Now &rarr;
+          </button>
         </div>
       </div>
     )
@@ -72,7 +104,10 @@ export default function Register() {
               type="text"
               placeholder="e.g. Alex Morgan"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value)
+                if (error) setError('')
+              }}
               required
               autoComplete="name"
             />
@@ -84,19 +119,42 @@ export default function Register() {
               type="email"
               placeholder="alex@fusionlabs.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                if (error) setError('')
+              }}
               required
               autoComplete="email"
             />
           </label>
 
           <label className="field">
-            <span>Password</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Password</span>
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  padding: 0,
+                }}
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
             <input
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               placeholder="At least 6 characters"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                if (error) setError('')
+              }}
               required
               autoComplete="new-password"
             />
@@ -105,16 +163,24 @@ export default function Register() {
           <label className="field">
             <span>Confirm Password</span>
             <input
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               placeholder="Re-enter password"
               value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
+              onChange={(e) => {
+                setConfirm(e.target.value)
+                if (error) setError('')
+              }}
               required
               autoComplete="new-password"
             />
           </label>
 
-          {error && <p className="form-error">{error}</p>}
+          {error && (
+            <div className="form-error" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>⚠️</span>
+              <span>{error}</span>
+            </div>
+          )}
 
           <button type="submit" className="btn btn-primary btn-block" disabled={loading} style={{ marginTop: '8px' }}>
             {loading ? 'Creating Account...' : 'Create Account'}

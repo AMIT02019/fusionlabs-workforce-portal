@@ -16,9 +16,10 @@ import AttendanceCalendar from '../components/admin/AttendanceCalendar'
 import EmployeeDetail from '../components/admin/EmployeeDetail'
 import AllEmployeeWork from '../components/admin/AllEmployeeWork'
 import DeleteEmployeeModal from '../components/admin/DeleteEmployeeModal'
+import AdminSettingsModal from '../components/admin/AdminSettingsModal'
 
 export default function AdminDashboard() {
-  const { session, signOut } = useAuth()
+  const { profile, signOut } = useAuth()
   const today = dateKey(new Date())
 
   const [employees, setEmployees] = useState([])
@@ -30,6 +31,7 @@ export default function AdminDashboard() {
   const [empListSearch, setEmpListSearch] = useState('')
   const [viewEmployee, setViewEmployee] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [showAdminSettings, setShowAdminSettings] = useState(false)
   const [notification, setNotification] = useState('')
 
   const load = useCallback(async () => {
@@ -85,6 +87,11 @@ export default function AdminDashboard() {
     setNotification(`Employee "${emp.name}" was successfully removed.`)
     setTimeout(() => setNotification(''), 4000)
     load()
+  }
+
+  function handleAdminUpdated(adminUser) {
+    setNotification(`Administrator credentials updated. Log in ID is now: ${adminUser.email}`)
+    setTimeout(() => setNotification(''), 5000)
   }
 
   // Summary calculations for today
@@ -178,8 +185,15 @@ export default function AdminDashboard() {
             </div>
             <div className="admin-sub-row">Admin Dashboard (Local Backend)</div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <span className="admin-welcome">Welcome, Sir</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span className="admin-welcome">Welcome, {profile?.name || 'Administrator'}</span>
+            <button
+              className="btn btn-outline"
+              onClick={() => setShowAdminSettings(true)}
+              title="Change Admin ID & Password"
+            >
+              ⚙️ Admin Settings
+            </button>
             <button className="btn btn-outline" onClick={signOut}>
               Logout
             </button>
@@ -401,7 +415,7 @@ export default function AdminDashboard() {
         </section>
 
         {/* All Employee Work */}
-        <AllEmployeeWork employees={employees} session={session} />
+        <AllEmployeeWork employees={employees} />
       </div>
 
       {/* Employee detail modal */}
@@ -409,7 +423,6 @@ export default function AdminDashboard() {
         <EmployeeDetail
           employee={viewEmployee}
           todayAttendance={todayAttendanceMap[viewEmployee.id]}
-          session={session}
           onClose={() => {
             setViewEmployee(null)
             load()
@@ -424,6 +437,14 @@ export default function AdminDashboard() {
           employee={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onDeleted={handleEmployeeDeleted}
+        />
+      )}
+
+      {/* Admin settings modal */}
+      {showAdminSettings && (
+        <AdminSettingsModal
+          onClose={() => setShowAdminSettings(false)}
+          onUpdated={handleAdminUpdated}
         />
       )}
     </div>

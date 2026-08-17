@@ -1,20 +1,33 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 
 export default function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { signIn } = useAuth()
-  const [email, setEmail] = useState('')
+
+  const [email, setEmail] = useState(location.state?.registeredEmail || '')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [infoMessage, setInfoMessage] = useState(location.state?.message || '')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (location.state?.registeredEmail) {
+      setEmail(location.state.registeredEmail)
+    }
+    if (location.state?.message) {
+      setInfoMessage(location.state.message)
+    }
+  }, [location.state])
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    setInfoMessage('')
 
     const cleanEmail = email.trim().toLowerCase()
     if (!cleanEmail || !password) {
@@ -43,6 +56,7 @@ export default function Login() {
     setEmail('alex@fusionlabs.com')
     setPassword('employee123')
     setError('')
+    setInfoMessage('')
   }
 
   return (
@@ -55,6 +69,12 @@ export default function Login() {
         <p className="home-subtitle" style={{ marginTop: '-16px', marginBottom: '24px' }}>
           Log in to record your attendance & work
         </p>
+
+        {infoMessage && (
+          <div className="success-msg" style={{ marginBottom: '16px', fontSize: '13px' }}>
+            {infoMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <label className="field">
