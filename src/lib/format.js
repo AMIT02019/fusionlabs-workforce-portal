@@ -1,8 +1,17 @@
 // Formatting helpers shared across the app.
 
+function parseLocalDate(d) {
+  if (!d) return new Date()
+  if (d instanceof Date) return d
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    return new Date(d + 'T00:00:00')
+  }
+  return new Date(d)
+}
+
 // "Friday, 14 August 2026"
 export function formatLongDate(d) {
-  const date = d instanceof Date ? d : new Date(d)
+  const date = parseLocalDate(d)
   return date.toLocaleDateString('en-GB', {
     weekday: 'long',
     day: 'numeric',
@@ -13,13 +22,13 @@ export function formatLongDate(d) {
 
 // "14 Aug"
 export function formatShortDate(d) {
-  const date = d instanceof Date ? d : new Date(d)
+  const date = parseLocalDate(d)
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
 // "Friday"
 export function formatDay(d) {
-  const date = d instanceof Date ? d : new Date(d)
+  const date = parseLocalDate(d)
   return date.toLocaleDateString('en-GB', { weekday: 'long' })
 }
 
@@ -27,6 +36,7 @@ export function formatDay(d) {
 export function formatTime(t) {
   if (!t) return null
   const date = t instanceof Date ? t : new Date(t)
+  if (Number.isNaN(date.getTime())) return null
   return date.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
@@ -38,7 +48,7 @@ export function formatTime(t) {
 export function formatDuration(minutes) {
   if (minutes == null) return null
   const m = Math.round(Number(minutes))
-  if (!m || m < 1) return '0m'
+  if (Number.isNaN(m) || m < 1) return '0m'
   const h = Math.floor(m / 60)
   const rem = m % 60
   if (h === 0) return `${rem}m`
@@ -48,7 +58,7 @@ export function formatDuration(minutes) {
 
 // YYYY-MM-DD in local time (used as the attendance/task date key)
 export function dateKey(d) {
-  const date = d instanceof Date ? d : new Date(d)
+  const date = parseLocalDate(d)
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')

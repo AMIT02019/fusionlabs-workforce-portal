@@ -40,11 +40,13 @@ export default function EmployeeDetail({ employee, todayAttendance, onClose, onD
   }, [load])
 
   // Build attendance summary over working days
-  const joinDate = new Date(employee.created_at)
-  const today = new Date()
-  let workingDays = 0
+  const joinDate = new Date(employee.created_at || Date.now())
+  joinDate.setHours(0, 0, 0, 0)
+  const todayDate = new Date()
+  todayDate.setHours(0, 0, 0, 0)
 
-  for (let d = new Date(joinDate); d <= today; d.setDate(d.getDate() + 1)) {
+  let workingDays = 0
+  for (let d = new Date(joinDate); d <= todayDate; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay()
     if (dow !== 0 && dow !== 6) workingDays++
   }
@@ -59,7 +61,7 @@ export default function EmployeeDetail({ employee, todayAttendance, onClose, onD
   const attByDate = {}
   attendance.forEach((r) => { attByDate[r.attendance_date] = r })
 
-  for (let d = new Date(joinDate); d <= today; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(joinDate); d <= todayDate; d.setDate(d.getDate() + 1)) {
     const dow = d.getDay()
     if (dow === 0 || dow === 6) continue
     const key = dateKey(d)
