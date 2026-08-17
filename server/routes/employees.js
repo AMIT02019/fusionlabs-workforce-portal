@@ -53,4 +53,29 @@ router.get('/:id', authenticateToken, requireAdmin, (req, res) => {
   })
 })
 
+// DELETE /api/employees/:id (Admin only: permanently delete an employee)
+router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
+  const employeeId = req.params.id
+
+  const target = db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(employeeId)
+  if (!target) {
+    return res.status(404).json({ error: 'Employee not found' })
+  }
+
+  if (target.role === 'admin') {
+    return res.status(403).json({ error: 'Cannot delete an administrator account' })
+  }
+
+  // Delete records associated with this employee
+  db.prepare('DELETE FROM attendance WHERE user_id = ?').run(employeeId)
+  db.prepare('DELETE FROM tasks WHERE user_id = ?').run(employeeId)
+  db.prepare('DELETE FROM users WHERE id = ?').run(employeeId)
+
+  console.log(`🗑️ Employee removed by admin: ${target.name} (${employeeId})`)
+
+  res.json({
+    message: `Employee "${target.name}" has been permanently removed from the system.`,
+  })
+})
+
 export default router

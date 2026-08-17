@@ -11,14 +11,16 @@ import {
 import { statusClass, TASK_STATUS_COLORS } from '../../lib/status'
 import { exportToCSV } from '../../lib/export'
 import ResetPasswordModal from './ResetPasswordModal'
+import DeleteEmployeeModal from './DeleteEmployeeModal'
 
-export default function EmployeeDetail({ employee, todayAttendance, onClose }) {
+export default function EmployeeDetail({ employee, todayAttendance, onClose, onDeleted }) {
   const [attendance, setAttendance] = useState([])
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingTask, setEditingTask] = useState(null)
   const [error, setError] = useState('')
   const [showReset, setShowReset] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -197,7 +199,7 @@ export default function EmployeeDetail({ employee, todayAttendance, onClose }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
             <button className="btn btn-outline btn-sm" onClick={() => setShowReset(true)}>
               🔑 Reset Password
             </button>
@@ -206,6 +208,13 @@ export default function EmployeeDetail({ employee, todayAttendance, onClose }) {
             </button>
             <button className="btn btn-outline btn-sm" onClick={handleExportEmployeeTasks}>
               📥 Export Tasks
+            </button>
+            <button
+              className="btn btn-danger btn-sm"
+              style={{ marginLeft: 'auto' }}
+              onClick={() => setShowDelete(true)}
+            >
+              🗑️ Remove Employee
             </button>
           </div>
 
@@ -384,6 +393,18 @@ export default function EmployeeDetail({ employee, todayAttendance, onClose }) {
 
       {showReset && (
         <ResetPasswordModal employee={employee} onClose={() => setShowReset(false)} />
+      )}
+
+      {showDelete && (
+        <DeleteEmployeeModal
+          employee={employee}
+          onClose={() => setShowDelete(false)}
+          onDeleted={() => {
+            setShowDelete(false)
+            if (onDeleted) onDeleted(employee)
+            onClose()
+          }}
+        />
       )}
     </div>
   )

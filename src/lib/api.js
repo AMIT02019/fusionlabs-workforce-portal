@@ -125,5 +125,10 @@ export const api = {
     list: (date) => request(`/employees${date ? `?date=${date}` : ''}`),
 
     getDetail: (id) => request(`/employees/${id}`),
+
+    delete: (id) =>
+      request(`/employees/${id}`, {
+        method: 'DELETE',
+      }),
   },
 }

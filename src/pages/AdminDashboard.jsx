@@ -15,6 +15,7 @@ import SummaryCards from '../components/admin/SummaryCards'
 import AttendanceCalendar from '../components/admin/AttendanceCalendar'
 import EmployeeDetail from '../components/admin/EmployeeDetail'
 import AllEmployeeWork from '../components/admin/AllEmployeeWork'
+import DeleteEmployeeModal from '../components/admin/DeleteEmployeeModal'
 
 export default function AdminDashboard() {
   const { session, signOut } = useAuth()
@@ -28,6 +29,8 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState('')
   const [empListSearch, setEmpListSearch] = useState('')
   const [viewEmployee, setViewEmployee] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [notification, setNotification] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -77,6 +80,12 @@ export default function AdminDashboard() {
     const interval = setInterval(load, 10000)
     return () => clearInterval(interval)
   }, [load])
+
+  function handleEmployeeDeleted(emp) {
+    setNotification(`Employee "${emp.name}" was successfully removed.`)
+    setTimeout(() => setNotification(''), 4000)
+    load()
+  }
 
   // Summary calculations for today
   const todayDow = new Date(today + 'T00:00:00').getDay()
@@ -179,6 +188,13 @@ export default function AdminDashboard() {
       </header>
 
       <div className="admin-body">
+        {notification && (
+          <div className="success-msg" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>✅ {notification}</span>
+            <button onClick={() => setNotification('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}>&times;</button>
+          </div>
+        )}
+
         {/* Summary cards */}
         <SummaryCards summary={summary} />
 
@@ -325,7 +341,7 @@ export default function AdminDashboard() {
                     <th>Email</th>
                     <th>Joined</th>
                     <th>Today's Status</th>
-                    <th>View Profile</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -359,12 +375,21 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            onClick={() => setViewEmployee(emp)}
-                          >
-                            View
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => setViewEmployee(emp)}
+                            >
+                              View
+                            </button>
+                            <button
+                              className="btn btn-danger btn-sm"
+                              onClick={() => setDeleteTarget(emp)}
+                              title="Delete employee record"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -389,6 +414,16 @@ export default function AdminDashboard() {
             setViewEmployee(null)
             load()
           }}
+          onDeleted={handleEmployeeDeleted}
+        />
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <DeleteEmployeeModal
+          employee={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={handleEmployeeDeleted}
         />
       )}
     </div>
