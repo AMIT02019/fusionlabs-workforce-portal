@@ -7,8 +7,8 @@ import ForgotPasswordModal from '../components/ForgotPasswordModal'
 export default function AdminLogin() {
   const navigate = useNavigate()
   const { signIn } = useAuth()
-  const [email, setEmail] = useState('admin@fusionlabs.com')
-  const [password, setPassword] = useState('admin123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [infoMessage, setInfoMessage] = useState('')
@@ -43,13 +43,6 @@ export default function AdminLogin() {
       setError(err.message || 'Invalid administrator email or password. Please try again.')
       setLoading(false)
     }
-  }
-
-  function handleFillAdmin() {
-    setEmail('admin@fusionlabs.com')
-    setPassword('admin123')
-    setError('')
-    setInfoMessage('')
   }
 
   function handlePasswordResetSuccess(resetEmail) {
@@ -101,50 +94,70 @@ export default function AdminLogin() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: 'var(--primary)',
-                  fontSize: '12px',
+                  color: '#2563eb',
+                  fontSize: '11px',
                   cursor: 'pointer',
-                  fontWeight: 600,
                   padding: 0,
+                  fontWeight: 500,
                 }}
               >
                 {showPassword ? 'Hide' : 'Show'}
               </button>
             </div>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value)
-                if (error) setError('')
-              }}
-              required
-              autoComplete="current-password"
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (error) setError('')
+                }}
+                required
+                autoComplete="current-password"
+                style={{ paddingRight: '40px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: '#64748b',
+                }}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? '👁️' : '👁️‍🗨️'}
+              </button>
+            </div>
           </label>
 
-          <div style={{ textAlign: 'right', marginTop: '-8px', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-4px', marginBottom: '8px' }}>
             <button
               type="button"
               onClick={() => setShowForgotPassword(true)}
               style={{
                 background: 'none',
                 border: 'none',
-                color: 'var(--primary)',
+                color: '#2563eb',
                 fontSize: '12px',
                 cursor: 'pointer',
-                fontWeight: 500,
-                padding: 0,
+                padding: '2px 0',
                 textDecoration: 'underline',
               }}
             >
-              Forgot password?
+              Forgot Password?
             </button>
           </div>
 
           {error && (
-            <div className="form-error" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div className="form-error" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#b91c1c' }}>
               <span>⚠️</span>
               <span>{error}</span>
             </div>
@@ -155,22 +168,7 @@ export default function AdminLogin() {
           </button>
         </form>
 
-        <div style={{ marginTop: '16px', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#64748b' }}>
-          <div>
-            <strong>Admin Credentials:</strong><br />
-            <code>admin@fusionlabs.com</code> / <code>admin123</code>
-          </div>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={handleFillAdmin}
-            style={{ fontSize: '11px', padding: '4px 8px' }}
-          >
-            Autofill
-          </button>
-        </div>
-
-        <p className="admin-back" style={{ marginTop: '16px' }}>
+        <p className="admin-back" style={{ marginTop: '20px' }}>
           <Link to="/login">&larr; Switch to Employee Login</Link>
         </p>
       </div>
