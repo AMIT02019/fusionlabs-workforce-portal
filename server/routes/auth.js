@@ -8,7 +8,7 @@ import { authenticateToken, requireAdmin, JWT_SECRET } from '../middleware/auth.
 const router = Router()
 
 // POST /api/auth/login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body
 
   if (!email || !password) {
@@ -16,7 +16,7 @@ router.post('/login', (req, res) => {
   }
 
   const cleanEmail = email.trim().toLowerCase()
-  const user = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(cleanEmail)
+  const user = await db.get('SELECT * FROM users WHERE lower(email) = ?', [cleanEmail])
   if (!user) {
     return res.status(401).json({ error: 'Invalid email or password' })
   }
@@ -47,7 +47,7 @@ router.post('/login', (req, res) => {
 })
 
 // POST /api/auth/register (Employee account creation)
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const { name, email, password } = req.body
 
   if (!name || !email || !password) {
@@ -61,7 +61,7 @@ router.post('/register', (req, res) => {
   const cleanEmail = email.trim().toLowerCase()
   const cleanName = name.trim()
 
-  const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(cleanEmail)
+  const existing = await db.get('SELECT id FROM users WHERE lower(email) = ?', [cleanEmail])
   if (existing) {
     return res.status(409).json({ error: 'An account with this email already exists' })
   }
@@ -70,10 +70,11 @@ router.post('/register', (req, res) => {
   const password_hash = bcrypt.hashSync(password, 10)
 
   try {
-    db.prepare(`
-      INSERT INTO users (id, name, email, password_hash, role, created_at)
-      VALUES (?, ?, ?, ?, 'employee', datetime('now'))
-    `).run(id, cleanName, cleanEmail, password_hash)
+    await db.run(
+      `INSERT INTO users (id, name, email, password_hash, role)
+       VALUES (?, ?, ?, ?, 'employee')`,
+      [id, cleanName, cleanEmail, password_hash]
+    )
 
     const token = jwt.sign(
       { id, name: cleanName, email: cleanEmail, role: 'employee' },
@@ -97,7 +98,7 @@ router.post('/register', (req, res) => {
 })
 
 // POST /api/auth/forgot-password (Self-service password reset)
-router.post('/forgot-password', (req, res) => {
+router.post('/forgot-password', async (req, res) => {
   const { email, newPassword } = req.body
 
   if (!email || !newPassword) {
@@ -109,14 +110,14 @@ router.post('/forgot-password', (req, res) => {
   }
 
   const cleanEmail = email.trim().toLowerCase()
-  const user = db.prepare('SELECT id, name, email FROM users WHERE lower(email) = ?').get(cleanEmail)
+  const user = await db.get('SELECT id, name, email FROM users WHERE lower(email) = ?', [cleanEmail])
 
   if (!user) {
     return res.status(404).json({ error: 'No account found with this work email address' })
   }
 
   const password_hash = bcrypt.hashSync(newPassword, 10)
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, user.id)
+  await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash, user.id])
 
   console.log(`🔑 Password reset for user: ${user.name} (${user.email})`)
 
@@ -131,7 +132,7 @@ router.get('/me', authenticateToken, (req, res) => {
 })
 
 // POST /api/auth/change-password (User updates own password)
-router.post('/change-password', authenticateToken, (req, res) => {
+router.post('/change-password', authenticateToken, async (req, res) => {
   const { newPassword } = req.body
 
   if (!newPassword || newPassword.length < 6) {
@@ -139,17 +140,17 @@ router.post('/change-password', authenticateToken, (req, res) => {
   }
 
   const password_hash = bcrypt.hashSync(newPassword, 10)
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, req.user.id)
+  await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash, req.user.id])
 
   res.json({ message: 'Password updated successfully' })
 })
 
 // POST /api/auth/admin-profile (Admin updates own ID / email, name, and/or password)
-router.post('/admin-profile', authenticateToken, requireAdmin, (req, res) => {
+router.post('/admin-profile', authenticateToken, requireAdmin, async (req, res) => {
   const { name, email, newPassword } = req.body
 
   const adminId = req.user.id
-  const currentAdmin = db.prepare('SELECT * FROM users WHERE id = ?').get(adminId)
+  const currentAdmin = await db.get('SELECT * FROM users WHERE id = ?', [adminId])
   if (!currentAdmin) {
     return res.status(404).json({ error: 'Admin account not found' })
   }
@@ -160,7 +161,7 @@ router.post('/admin-profile', authenticateToken, requireAdmin, (req, res) => {
 
   // Check email uniqueness if email is changed
   if (finalEmail !== currentAdmin.email.toLowerCase()) {
-    const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ? AND id != ?').get(finalEmail, adminId)
+    const existing = await db.get('SELECT id FROM users WHERE lower(email) = ? AND id != ?', [finalEmail, adminId])
     if (existing) {
       return res.status(409).json({ error: 'This email address is already in use by another account' })
     }
@@ -175,11 +176,12 @@ router.post('/admin-profile', authenticateToken, requireAdmin, (req, res) => {
   }
 
   try {
-    db.prepare(`
-      UPDATE users 
-      SET name = ?, email = ?, password_hash = ?
-      WHERE id = ?
-    `).run(finalName, finalEmail, finalPasswordHash, adminId)
+    await db.run(
+      `UPDATE users 
+       SET name = ?, email = ?, password_hash = ?
+       WHERE id = ?`,
+      [finalName, finalEmail, finalPasswordHash, adminId]
+    )
 
     const updatedUser = {
       id: adminId,
@@ -208,14 +210,14 @@ router.post('/admin-profile', authenticateToken, requireAdmin, (req, res) => {
 })
 
 // POST /api/auth/admin-reset-password (Admin resets an employee's password)
-router.post('/admin-reset-password', authenticateToken, requireAdmin, (req, res) => {
+router.post('/admin-reset-password', authenticateToken, requireAdmin, async (req, res) => {
   const { userId, newPassword } = req.body
 
   if (!userId || !newPassword || newPassword.length < 6) {
     return res.status(400).json({ error: 'User ID and new password (min 6 chars) required' })
   }
 
-  const target = db.prepare('SELECT id, role, name FROM users WHERE id = ?').get(userId)
+  const target = await db.get('SELECT id, role, name FROM users WHERE id = ?', [userId])
   if (!target) {
     return res.status(404).json({ error: 'User not found' })
   }
@@ -225,7 +227,7 @@ router.post('/admin-reset-password', authenticateToken, requireAdmin, (req, res)
   }
 
   const password_hash = bcrypt.hashSync(newPassword, 10)
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, userId)
+  await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash, userId])
 
   res.json({ message: `Password reset successfully for ${target.name}` })
 })

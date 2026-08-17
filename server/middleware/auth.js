@@ -12,30 +12,32 @@ export function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Access token required' })
   }
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid or expired token' })
     }
 
     let user = null
     try {
-      user = db.prepare('SELECT id, name, email, role, created_at FROM users WHERE id = ?').get(decoded.id)
-      
-      // Auto-heal: If worker does not have this user in its local db, recreate user entry
+      user = await db.get('SELECT id, name, email, role, created_at FROM users WHERE id = ?', [decoded.id])
+
+      // Auto-heal: If worker/db is missing user record, recreate it
       if (!user && decoded.id && decoded.email) {
-        db.prepare(`
-          INSERT OR IGNORE INTO users (id, name, email, password_hash, role, created_at)
-          VALUES (?, ?, ?, '', ?, datetime('now'))
-        `).run(
-          decoded.id,
-          decoded.name || decoded.email.split('@')[0],
-          decoded.email.toLowerCase(),
-          decoded.role || 'employee'
+        await db.run(
+          `INSERT INTO users (id, name, email, password_hash, role)
+           VALUES (?, ?, ?, '', ?)
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            decoded.id,
+            decoded.name || decoded.email.split('@')[0],
+            decoded.email.toLowerCase(),
+            decoded.role || 'employee',
+          ]
         )
-        user = db.prepare('SELECT id, name, email, role, created_at FROM users WHERE id = ?').get(decoded.id)
+        user = await db.get('SELECT id, name, email, role, created_at FROM users WHERE id = ?', [decoded.id])
       }
     } catch (dbErr) {
-      console.warn('Database lookup warning:', dbErr)
+      // Ignore conflict errors during auto-heal
     }
 
     if (!user) {

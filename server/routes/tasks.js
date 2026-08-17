@@ -5,36 +5,39 @@ import { authenticateToken } from '../middleware/auth.js'
 
 const router = Router()
 
-// Helper: Ensure user exists in users table on this worker
-function ensureUser(user) {
+// Helper: Ensure user exists in users table on this worker/db
+async function ensureUser(user) {
   if (!user?.id) return
   try {
-    db.prepare(`
-      INSERT OR IGNORE INTO users (id, name, email, password_hash, role, created_at)
-      VALUES (?, ?, ?, '', ?, datetime('now'))
-    `).run(user.id, user.name || user.email?.split('@')[0] || 'Employee', user.email || '', user.role || 'employee')
+    await db.run(
+      `INSERT INTO users (id, name, email, password_hash, role)
+       VALUES (?, ?, ?, '', ?)
+       ON CONFLICT (id) DO NOTHING`,
+      [user.id, user.name || user.email?.split('@')[0] || 'Employee', user.email || '', user.role || 'employee']
+    )
   } catch (e) {}
 }
 
 // GET /api/tasks/today (Shared team tasks for today - visible to everyone)
-router.get('/today', authenticateToken, (req, res) => {
-  ensureUser(req.user)
+router.get('/today', authenticateToken, async (req, res) => {
+  await ensureUser(req.user)
   const dateStr = req.query.date || new Date().toISOString().split('T')[0]
 
-  const tasks = db.prepare(`
-    SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
-    FROM tasks t
-    LEFT JOIN users u ON t.user_id = u.id
-    WHERE t.task_date = ?
-    ORDER BY t.start_time ASC, t.created_at ASC
-  `).all(dateStr)
+  const tasks = await db.all(
+    `SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
+     FROM tasks t
+     LEFT JOIN users u ON t.user_id = u.id
+     WHERE t.task_date = ?
+     ORDER BY t.start_time ASC, t.created_at ASC`,
+    [dateStr]
+  )
 
   res.json({ tasks })
 })
 
 // POST /api/tasks (Create a task)
-router.post('/', authenticateToken, (req, res) => {
-  ensureUser(req.user)
+router.post('/', authenticateToken, async (req, res) => {
+  await ensureUser(req.user)
   const { project_name, task_name, task_date } = req.body
 
   if (!project_name?.trim() || !task_name?.trim()) {
@@ -45,26 +48,28 @@ router.post('/', authenticateToken, (req, res) => {
   const today = task_date || new Date().toISOString().split('T')[0]
   const now = new Date().toISOString()
 
-  db.prepare(`
-    INSERT INTO tasks (id, user_id, project_name, task_name, task_date, start_time, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'Not Done', datetime('now'), datetime('now'))
-  `).run(id, req.user.id, project_name.trim(), task_name.trim(), today, now)
+  await db.run(
+    `INSERT INTO tasks (id, user_id, project_name, task_name, task_date, start_time, status)
+     VALUES (?, ?, ?, ?, ?, ?, 'Not Done')`,
+    [id, req.user.id, project_name.trim(), task_name.trim(), today, now]
+  )
 
-  const task = db.prepare(`
-    SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
-    FROM tasks t
-    LEFT JOIN users u ON t.user_id = u.id
-    WHERE t.id = ?
-  `).get(id)
+  const task = await db.get(
+    `SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
+     FROM tasks t
+     LEFT JOIN users u ON t.user_id = u.id
+     WHERE t.id = ?`,
+    [id]
+  )
 
   res.status(201).json({ message: 'Task created successfully', task })
 })
 
 // PUT /api/tasks/:id (Update task - Owner or Admin)
-router.put('/:id', authenticateToken, (req, res) => {
-  ensureUser(req.user)
+router.put('/:id', authenticateToken, async (req, res) => {
+  await ensureUser(req.user)
   const taskId = req.params.id
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId)
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId])
 
   if (!task) {
     return res.status(404).json({ error: 'Task not found' })
@@ -96,27 +101,29 @@ router.put('/:id', authenticateToken, (req, res) => {
     finalDuration = null
   }
 
-  db.prepare(`
-    UPDATE tasks
-    SET project_name = ?, task_name = ?, status = ?, start_time = ?, end_time = ?, duration_minutes = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `).run(finalProject, finalTask, finalStatus, finalStart, finalEnd, finalDuration, taskId)
+  await db.run(
+    `UPDATE tasks
+     SET project_name = ?, task_name = ?, status = ?, start_time = ?, end_time = ?, duration_minutes = ?
+     WHERE id = ?`,
+    [finalProject, finalTask, finalStatus, finalStart, finalEnd, finalDuration, taskId]
+  )
 
-  const updated = db.prepare(`
-    SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
-    FROM tasks t
-    LEFT JOIN users u ON t.user_id = u.id
-    WHERE t.id = ?
-  `).get(taskId)
+  const updated = await db.get(
+    `SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
+     FROM tasks t
+     LEFT JOIN users u ON t.user_id = u.id
+     WHERE t.id = ?`,
+    [taskId]
+  )
 
   res.json({ message: 'Task updated successfully', task: updated })
 })
 
 // DELETE /api/tasks/:id (Delete task - Owner or Admin)
-router.delete('/:id', authenticateToken, (req, res) => {
-  ensureUser(req.user)
+router.delete('/:id', authenticateToken, async (req, res) => {
+  await ensureUser(req.user)
   const taskId = req.params.id
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId)
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId])
 
   if (!task) {
     return res.status(404).json({ error: 'Task not found' })
@@ -126,12 +133,12 @@ router.delete('/:id', authenticateToken, (req, res) => {
     return res.status(403).json({ error: 'Access denied: You can only delete your own tasks' })
   }
 
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId)
+  await db.run('DELETE FROM tasks WHERE id = ?', [taskId])
   res.json({ message: 'Task deleted successfully' })
 })
 
 // GET /api/tasks/all (Admin / Manager query for all workforce work with filters)
-router.get('/all', authenticateToken, (req, res) => {
+router.get('/all', authenticateToken, async (req, res) => {
   const { userId, date, status } = req.query
 
   let query = `
@@ -157,7 +164,7 @@ router.get('/all', authenticateToken, (req, res) => {
 
   query += ` ORDER BY t.task_date DESC, t.start_time DESC, t.created_at DESC`
 
-  const tasks = db.prepare(query).all(...params)
+  const tasks = await db.all(query, params)
   res.json({ tasks })
 })
 
