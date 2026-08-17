@@ -15,7 +15,8 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' })
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email.trim())
+  const cleanEmail = email.trim().toLowerCase()
+  const user = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(cleanEmail)
   if (!user) {
     return res.status(401).json({ error: 'Invalid email or password' })
   }
@@ -26,7 +27,7 @@ router.post('/login', (req, res) => {
   }
 
   const token = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    { id: user.id, name: user.name, email: user.email, role: user.role },
     JWT_SECRET,
     { expiresIn: '7d' }
   )
@@ -57,7 +58,10 @@ router.post('/register', (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 6 characters' })
   }
 
-  const existing = db.prepare('SELECT id FROM users WHERE lower(email) = lower(?)').get(email.trim())
+  const cleanEmail = email.trim().toLowerCase()
+  const cleanName = name.trim()
+
+  const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(cleanEmail)
   if (existing) {
     return res.status(409).json({ error: 'An account with this email already exists' })
   }
@@ -69,10 +73,10 @@ router.post('/register', (req, res) => {
     db.prepare(`
       INSERT INTO users (id, name, email, password_hash, role, created_at)
       VALUES (?, ?, ?, ?, 'employee', datetime('now'))
-    `).run(id, name.trim(), email.trim().toLowerCase(), password_hash)
+    `).run(id, cleanName, cleanEmail, password_hash)
 
     const token = jwt.sign(
-      { id, email: email.trim().toLowerCase(), role: 'employee' },
+      { id, name: cleanName, email: cleanEmail, role: 'employee' },
       JWT_SECRET,
       { expiresIn: '7d' }
     )
@@ -82,8 +86,8 @@ router.post('/register', (req, res) => {
       token,
       user: {
         id,
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
+        name: cleanName,
+        email: cleanEmail,
         role: 'employee',
       },
     })

@@ -2,7 +2,6 @@ import Database from 'better-sqlite3'
 import bcrypt from 'bcryptjs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import fs from 'fs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -13,10 +12,10 @@ const dbPath = path.join(dbDir, 'database.sqlite')
 
 export const db = new Database(dbPath)
 
-// Enable foreign keys & WAL mode for performance
+// Configure PRAGMAs
 try {
   db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
+  db.pragma('foreign_keys = OFF')
 } catch (e) {
   console.warn('Pragma warning:', e)
 }
@@ -42,7 +41,6 @@ export function initDB() {
       working_minutes INTEGER,
       status TEXT CHECK (status IN ('PRESENT', 'HALF DAY', 'ABSENT')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE (user_id, attendance_date)
     );
 
@@ -57,8 +55,7 @@ export function initDB() {
       duration_minutes INTEGER,
       status TEXT NOT NULL DEFAULT 'Not Done' CHECK (status IN ('Not Done', 'Half Done', 'Completed')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance(user_id, attendance_date);

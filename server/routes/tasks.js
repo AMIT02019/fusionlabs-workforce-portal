@@ -5,8 +5,20 @@ import { authenticateToken } from '../middleware/auth.js'
 
 const router = Router()
 
+// Helper: Ensure user exists in users table on this worker
+function ensureUser(user) {
+  if (!user?.id) return
+  try {
+    db.prepare(`
+      INSERT OR IGNORE INTO users (id, name, email, password_hash, role, created_at)
+      VALUES (?, ?, ?, '', ?, datetime('now'))
+    `).run(user.id, user.name || user.email?.split('@')[0] || 'Employee', user.email || '', user.role || 'employee')
+  } catch (e) {}
+}
+
 // GET /api/tasks/today (Shared team tasks for today)
 router.get('/today', authenticateToken, (req, res) => {
+  ensureUser(req.user)
   const dateStr = req.query.date || new Date().toISOString().split('T')[0]
 
   const tasks = db.prepare(`
@@ -22,6 +34,7 @@ router.get('/today', authenticateToken, (req, res) => {
 
 // POST /api/tasks (Create a task)
 router.post('/', authenticateToken, (req, res) => {
+  ensureUser(req.user)
   const { project_name, task_name, task_date } = req.body
 
   if (!project_name?.trim() || !task_name?.trim()) {
@@ -49,6 +62,7 @@ router.post('/', authenticateToken, (req, res) => {
 
 // PUT /api/tasks/:id (Update task - Owner or Admin)
 router.put('/:id', authenticateToken, (req, res) => {
+  ensureUser(req.user)
   const taskId = req.params.id
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId)
 
@@ -100,6 +114,7 @@ router.put('/:id', authenticateToken, (req, res) => {
 
 // DELETE /api/tasks/:id (Delete task - Owner or Admin)
 router.delete('/:id', authenticateToken, (req, res) => {
+  ensureUser(req.user)
   const taskId = req.params.id
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId)
 

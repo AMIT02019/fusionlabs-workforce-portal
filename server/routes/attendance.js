@@ -13,8 +13,20 @@ function calculateStatus(workingMinutes) {
   return 'ABSENT'
 }
 
+// Helper: Ensure user exists in users table on this worker
+function ensureUser(user) {
+  if (!user?.id) return
+  try {
+    db.prepare(`
+      INSERT OR IGNORE INTO users (id, name, email, password_hash, role, created_at)
+      VALUES (?, ?, ?, '', ?, datetime('now'))
+    `).run(user.id, user.name || user.email?.split('@')[0] || 'Employee', user.email || '', user.role || 'employee')
+  } catch (e) {}
+}
+
 // GET /api/attendance/today (Logged in user's attendance today)
 router.get('/today', authenticateToken, (req, res) => {
+  ensureUser(req.user)
   const dateStr = req.query.date || new Date().toISOString().split('T')[0]
   const record = db.prepare(`
     SELECT * FROM attendance 
@@ -26,6 +38,7 @@ router.get('/today', authenticateToken, (req, res) => {
 
 // POST /api/attendance/check-in
 router.post('/check-in', authenticateToken, (req, res) => {
+  ensureUser(req.user)
   const today = req.body.date || new Date().toISOString().split('T')[0]
   const now = new Date().toISOString()
 
@@ -56,6 +69,7 @@ router.post('/check-in', authenticateToken, (req, res) => {
 
 // POST /api/attendance/check-out
 router.post('/check-out', authenticateToken, (req, res) => {
+  ensureUser(req.user)
   const today = req.body.date || new Date().toISOString().split('T')[0]
   const now = new Date()
   const nowStr = now.toISOString()
@@ -89,6 +103,7 @@ router.post('/check-out', authenticateToken, (req, res) => {
 
 // GET /api/attendance/history (Last 30 attendance records for current user)
 router.get('/history', authenticateToken, (req, res) => {
+  ensureUser(req.user)
   const records = db.prepare(`
     SELECT attendance_date, check_in, check_out, working_minutes, status 
     FROM attendance 
