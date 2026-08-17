@@ -239,9 +239,9 @@ export default function TaskSection({ profile, today, onExit }) {
                           value={editing.status}
                           onChange={(e) => setEditing({ ...editing, status: e.target.value })}
                         >
-                          <option>Not Done</option>
-                          <option>Half Done</option>
-                          <option>Completed</option>
+                          <option value="Not Done">🔴 Not Done</option>
+                          <option value="Half Done">🟡 Half Done</option>
+                          <option value="Completed">🟢 Completed</option>
                         </select>
                       </td>
                       <td className="actions-cell">
@@ -276,9 +276,9 @@ export default function TaskSection({ profile, today, onExit }) {
                           onChange={(e) => handleStatusChange(task, e.target.value)}
                           className={`task-select ${TASK_STATUS_COLORS[task.status]}`}
                         >
-                          <option>Not Done</option>
-                          <option>Half Done</option>
-                          <option>Completed</option>
+                          <option value="Not Done">🔴 Not Done</option>
+                          <option value="Half Done">🟡 Half Done</option>
+                          <option value="Completed">🟢 Completed</option>
                         </select>
                       ) : (
                         <span className={`task-badge ${TASK_STATUS_COLORS[task.status]}`}>
