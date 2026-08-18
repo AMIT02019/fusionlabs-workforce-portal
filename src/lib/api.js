@@ -116,6 +116,11 @@ export const api = {
   tasks: {
     getToday: (date) => request(`/tasks/today${date ? `?date=${date}` : ''}`),
 
+    getWorkforceTable: (params = {}) => {
+      const query = new URLSearchParams(params).toString()
+      return request(`/tasks/workforce-table${query ? `?${query}` : ''}`)
+    },
+
     getMy: (params = {}) => {
       const query = new URLSearchParams(params).toString()
       return request(`/tasks/my${query ? `?${query}` : ''}`)

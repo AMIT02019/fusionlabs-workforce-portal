@@ -18,6 +18,85 @@ async function ensureUser(user) {
   } catch (e) {}
 }
 
+// Helper: Get Monday and Sunday of current week in YYYY-MM-DD
+function getWeekRange(d = new Date()) {
+  const date = new Date(d)
+  const day = date.getDay()
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const monday = new Date(date)
+  monday.setDate(date.getDate() + diffToMonday)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+
+  const format = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+  return {
+    monday: format(monday),
+    sunday: format(sunday),
+  }
+}
+
+// GET /api/tasks/workforce-table (Powers the main employee dashboard overview table: Employee | Project | Task | Check In | Day hr | Week hr)
+router.get('/workforce-table', authenticateToken, async (req, res) => {
+  await ensureUser(req.user)
+  const { fromDate, toDate } = req.query
+  const todayStr = new Date().toISOString().split('T')[0]
+  const from = fromDate || todayStr
+  const to = toDate || todayStr
+
+  // 1. Fetch tasks within the date range
+  const tasks = await db.all(
+    `SELECT t.*, 
+            COALESCE(u.name, 'Team Member') as user_name, 
+            u.email as user_email,
+            a.check_in,
+            a.check_out,
+            a.working_minutes,
+            a.status as attendance_status
+     FROM tasks t
+     LEFT JOIN users u ON t.user_id = u.id
+     LEFT JOIN attendance a ON t.user_id = a.user_id AND t.task_date = a.attendance_date
+     WHERE t.task_date >= ? AND t.task_date <= ?
+     ORDER BY t.task_date DESC, t.start_time DESC, t.created_at DESC`,
+    [from, to]
+  )
+
+  // 2. Compute weekly working minutes for the users
+  const { monday, sunday } = getWeekRange(new Date(to))
+  const weekRecords = await db.all(
+    `SELECT user_id, SUM(COALESCE(working_minutes, 0)) as total_week_minutes
+     FROM attendance
+     WHERE attendance_date >= ? AND attendance_date <= ?
+     GROUP BY user_id`,
+    [monday, sunday]
+  )
+
+  const weekMap = {}
+  weekRecords.forEach((r) => {
+    weekMap[r.user_id] = Number(r.total_week_minutes) || 0
+  })
+
+  const enrichedTasks = tasks.map((t) => {
+    // If today is active and not checked out, calculate live elapsed
+    let dayMins = t.working_minutes
+    if (t.check_in && !t.check_out && t.task_date === todayStr) {
+      dayMins = Math.max(0, Math.round((Date.now() - new Date(t.check_in).getTime()) / 60000))
+    }
+
+    let userWeekMins = weekMap[t.user_id] || 0
+    if (t.check_in && !t.check_out && t.task_date === todayStr) {
+      userWeekMins += dayMins || 0
+    }
+
+    return {
+      ...t,
+      day_minutes: dayMins,
+      week_minutes: userWeekMins,
+    }
+  })
+
+  res.json({ tasks: enrichedTasks })
+})
+
 // GET /api/tasks/today (Shared team tasks for today)
 router.get('/today', authenticateToken, async (req, res) => {
   await ensureUser(req.user)
@@ -131,14 +210,12 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
   // CRITICAL STATUS RULES:
   if (finalStatus === 'Completed') {
-    // If transitioning to Completed or explicit end_time provided, create new completion time
     const now = new Date()
     finalEnd = end_time || now.toISOString()
     const s = new Date(finalStart).getTime()
     const e = new Date(finalEnd).getTime()
     finalDuration = Math.max(0, Math.round((e - s) / 60000))
   } else {
-    // If status is 'Not Done' or 'Half Done', REMOVE end_time and duration_minutes
     finalEnd = null
     finalDuration = null
   }

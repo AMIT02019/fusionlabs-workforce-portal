@@ -4,8 +4,8 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 
 const router = Router()
 
-// GET /api/employees (Admin list all employees with today's status)
-router.get('/', authenticateToken, requireAdmin, async (req, res) => {
+// GET /api/employees (List all employees with today's status)
+router.get('/', authenticateToken, async (req, res) => {
   const today = req.query.date || new Date().toISOString().split('T')[0]
 
   const employees = await db.all(
