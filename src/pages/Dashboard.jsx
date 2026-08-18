@@ -158,13 +158,6 @@ export default function Dashboard() {
         }}
       />
 
-      {/* 5. TODAY'S MY ATTENDANCE CARD: Employee | Status */}
-      <TodayAttendanceList
-        key={`att-${refreshKey}`}
-        today={today}
-        currentUserId={profile?.id}
-      />
-
       {/* 6. WORK HISTORY & ATTENDANCE HISTORY */}
       <WorkHistory profile={profile} />
 
