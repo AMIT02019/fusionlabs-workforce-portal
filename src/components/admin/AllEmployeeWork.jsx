@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../lib/api'
 import {
   formatShortDate,
+  formatDay,
   formatTime,
   formatDuration,
   dateKey,
@@ -9,26 +10,71 @@ import {
 import { TASK_STATUS_COLORS } from '../../lib/status'
 import { exportToCSV } from '../../lib/export'
 
-export default function AllEmployeeWork({ employees }) {
+export default function AllEmployeeWork({ employees, today }) {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [editing, setEditing] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [editingTask, setEditingTask] = useState(null)
 
-  // Filters
+  // Quick filters
+  const [quickFilter, setQuickFilter] = useState('today') // 'today', 'yesterday', 'this_week', 'this_month', 'all'
   const [search, setSearch] = useState('')
-  const [empFilter, setEmpFilter] = useState('all')
-  const [dateFilter, setDateFilter] = useState('')
-  const [projectFilter, setProjectFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [selectedUser, setSelectedUser] = useState('all')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [filterProject, setFilterProject] = useState('')
+  const [filterStatus, setFilterStatus] = useState('all')
 
-  const load = useCallback(async (isBackground = false) => {
+  const todayDate = new Date()
+  const todayStr = dateKey(todayDate)
+
+  const yesterday = new Date(todayDate)
+  yesterday.setDate(todayDate.getDate() - 1)
+  const yesterdayStr = dateKey(yesterday)
+
+  const dayOfWeek = todayDate.getDay()
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  const monday = new Date(todayDate)
+  monday.setDate(todayDate.getDate() + diffToMonday)
+  const mondayStr = dateKey(monday)
+
+  const firstOfMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)
+  const firstOfMonthStr = dateKey(firstOfMonth)
+
+  const loadTasks = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true)
+    setError('')
     try {
       const params = {}
-      if (empFilter !== 'all') params.userId = empFilter
-      if (dateFilter) params.date = dateFilter
-      if (statusFilter !== 'all') params.status = statusFilter
+      if (selectedUser && selectedUser !== 'all') {
+        params.userId = selectedUser
+      }
+
+      if (fromDate || toDate) {
+        if (fromDate) params.fromDate = fromDate
+        if (toDate) params.toDate = toDate
+      } else if (quickFilter === 'today') {
+        params.date = todayStr
+      } else if (quickFilter === 'yesterday') {
+        params.date = yesterdayStr
+      } else if (quickFilter === 'this_week') {
+        params.fromDate = mondayStr
+        params.toDate = todayStr
+      } else if (quickFilter === 'this_month') {
+        params.fromDate = firstOfMonthStr
+        params.toDate = todayStr
+      }
+
+      if (filterProject.trim()) {
+        params.project = filterProject.trim()
+      }
+      if (filterStatus && filterStatus !== 'all') {
+        params.status = filterStatus
+      }
+      if (search.trim()) {
+        params.search = search.trim()
+      }
 
       const res = await api.tasks.getAll(params)
       setTasks(res.tasks || [])
@@ -37,58 +83,43 @@ export default function AllEmployeeWork({ employees }) {
     } finally {
       if (!isBackground) setLoading(false)
     }
-  }, [empFilter, dateFilter, statusFilter])
+  }, [selectedUser, fromDate, toDate, quickFilter, filterProject, filterStatus, search, todayStr, yesterdayStr, mondayStr, firstOfMonthStr])
 
   useEffect(() => {
-    load()
-    // Real-time polling every 8 seconds so completed tasks reflect immediately
-    const interval = setInterval(() => load(true), 8000)
-    return () => clearInterval(interval)
-  }, [load])
+    loadTasks()
+  }, [loadTasks])
 
-  // Client-side filtering for search and project
-  const filtered = tasks.filter((task) => {
-    const empName = task.user_name || ''
-    if (search && !empName.toLowerCase().includes(search.toLowerCase())) return false
-    if (projectFilter && !task.project_name.toLowerCase().includes(projectFilter.toLowerCase())) return false
-    return true
-  })
+  function handleQuickFilter(type) {
+    setQuickFilter(type)
+    setFromDate('')
+    setToDate('')
+  }
 
-  // Quick stats
-  const completedCount = filtered.filter((t) => t.status === 'Completed').length
-  const halfDoneCount = filtered.filter((t) => t.status === 'Half Done').length
-  const notDoneCount = filtered.filter((t) => t.status === 'Not Done').length
-
-  // Export tasks to CSV
-  function handleExportTasks() {
-    const headers = ['Employee', 'Date', 'Project Name', 'Task Name', 'Start Time', 'End Time', 'Duration', 'Status']
-    const rows = filtered.map((task) => [
-      task.user_name || 'Team Member',
-      task.task_date,
-      task.project_name,
-      task.task_name,
-      task.start_time ? formatTime(task.start_time) : '--',
-      task.end_time ? formatTime(task.end_time) : '--',
-      task.duration_minutes != null ? formatDuration(task.duration_minutes) : '--',
-      task.status,
-    ])
-    exportToCSV(`Workforce_Tasks_Report_${dateKey(new Date())}`, headers, rows)
+  async function handleStatusChange(task, newStatus) {
+    setError('')
+    try {
+      await api.tasks.update(task.id, { status: newStatus })
+      setMsg(`✅ Task marked as "${newStatus}"!`)
+      setTimeout(() => setMsg(''), 4000)
+      await loadTasks()
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
   async function handleSaveEdit(e) {
     e.preventDefault()
     setError('')
-
     try {
-      await api.tasks.update(editing.id, {
-        project_name: editing.project_name.trim(),
-        task_name: editing.task_name.trim(),
-        status: editing.status,
-        start_time: editing.start_time,
-        end_time: editing.end_time || null,
+      await api.tasks.update(editingTask.id, {
+        project_name: editingTask.project_name.trim(),
+        task_name: editingTask.task_name.trim(),
+        status: editingTask.status,
       })
-      setEditing(null)
-      await load()
+      setEditingTask(null)
+      setMsg('✅ Task updated successfully!')
+      setTimeout(() => setMsg(''), 4000)
+      await loadTasks()
     } catch (err) {
       setError(err.message)
     }
@@ -98,65 +129,113 @@ export default function AllEmployeeWork({ employees }) {
     if (!confirm('Are you sure you want to delete this task?')) return
     try {
       await api.tasks.delete(taskId)
-      await load()
+      setMsg('🗑️ Task permanently removed.')
+      setTimeout(() => setMsg(''), 4000)
+      await loadTasks()
     } catch (err) {
       setError(err.message)
     }
   }
 
-  function startEdit(task) {
-    setEditing({
-      id: task.id,
-      project_name: task.project_name,
-      task_name: task.task_name,
-      status: task.status,
-      start_time: task.start_time,
-      end_time: task.end_time || '',
-    })
+  function handleExportTasks() {
+    const headers = [
+      'Date',
+      'Day',
+      'Employee',
+      'Email',
+      'Project',
+      'Task',
+      'Start Time',
+      'End Time',
+      'Duration',
+      'Status',
+    ]
+    const rows = tasks.map((t) => [
+      t.task_date,
+      formatDay(t.task_date),
+      t.user_name || 'Employee',
+      t.user_email || '',
+      t.project_name,
+      t.task_name,
+      t.start_time ? formatTime(t.start_time) : '--',
+      t.end_time ? formatTime(t.end_time) : '--',
+      t.duration_minutes != null ? formatDuration(t.duration_minutes) : '--',
+      t.status,
+    ])
+    exportToCSV(`Work_History_${quickFilter || 'filtered'}`, headers, rows)
   }
 
   return (
-    <section className="card">
+    <section className="card" style={{ marginTop: '24px' }}>
       <div className="section-head">
         <div>
-          <h2 className="section-title">All Workforce Tasks ({filtered.length})</h2>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '12px' }}>
-            <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-              🟢 Completed: {completedCount}
-            </span>
-            <span style={{ background: '#fef9c3', color: '#854d0e', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-              🟡 Half Done: {halfDoneCount}
-            </span>
-            <span style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-              🔴 Not Done: {notDoneCount}
-            </span>
-          </div>
+          <h2 className="section-title">Work History ({tasks.length})</h2>
+          <p className="muted" style={{ fontSize: '13px', margin: '4px 0 0 0' }}>
+            Historical work assignments across all team members and projects
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-outline btn-sm" onClick={() => load()}>
-            🔄 Refresh
-          </button>
-          <button className="btn btn-outline btn-sm" onClick={handleExportTasks}>
-            📥 Export CSV
-          </button>
-        </div>
+        <button className="btn btn-outline btn-sm" onClick={handleExportTasks} disabled={tasks.length === 0}>
+          📥 Export CSV
+        </button>
       </div>
 
-      {error && <p className="form-error" style={{ marginBottom: '16px' }}>{error}</p>}
+      {msg && (
+        <div className="success-msg" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{msg}</span>
+          <button onClick={() => setMsg('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}>&times;</button>
+        </div>
+      )}
 
-      <div className="filters-bar">
+      {error && <p className="form-error">{error}</p>}
+
+      {/* Quick Filters */}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        <button
+          className={`btn btn-sm ${quickFilter === 'today' && !fromDate ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => handleQuickFilter('today')}
+        >
+          Today
+        </button>
+        <button
+          className={`btn btn-sm ${quickFilter === 'yesterday' && !fromDate ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => handleQuickFilter('yesterday')}
+        >
+          Yesterday
+        </button>
+        <button
+          className={`btn btn-sm ${quickFilter === 'this_week' && !fromDate ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => handleQuickFilter('this_week')}
+        >
+          This Week
+        </button>
+        <button
+          className={`btn btn-sm ${quickFilter === 'this_month' && !fromDate ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => handleQuickFilter('this_month')}
+        >
+          This Month
+        </button>
+        <button
+          className={`btn btn-sm ${quickFilter === 'all' && !fromDate ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => handleQuickFilter('all')}
+        >
+          All
+        </button>
+      </div>
+
+      {/* Detailed Filters Bar */}
+      <div className="filters-bar" style={{ marginBottom: '16px' }}>
         <label className="field search-field">
-          <span>Search Employee</span>
+          <span>Search Employee / Task</span>
           <input
             type="text"
-            placeholder="Type a name..."
+            placeholder="Type name, email, task..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
         <label className="field">
           <span>Employee</span>
-          <select value={empFilter} onChange={(e) => setEmpFilter(e.target.value)}>
+          <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}>
             <option value="all">All Employees</option>
             {employees.map((e) => (
               <option key={e.id} value={e.id}>{e.name}</option>
@@ -164,111 +243,140 @@ export default function AllEmployeeWork({ employees }) {
           </select>
         </label>
         <label className="field">
-          <span>Date</span>
-          <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+          <span>From Date</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => {
+              setFromDate(e.target.value)
+              setQuickFilter('')
+            }}
+          />
         </label>
         <label className="field">
-          <span>Project</span>
+          <span>To Date</span>
           <input
-            type="text"
-            placeholder="Project name..."
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
+            type="date"
+            value={toDate}
+            onChange={(e) => {
+              setToDate(e.target.value)
+              setQuickFilter('')
+            }}
+            max={todayStr}
           />
         </label>
         <label className="field">
           <span>Status</span>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">All Statuses ({filtered.length})</option>
-            <option value="Completed">🟢 Completed ({completedCount})</option>
-            <option value="Half Done">🟡 Half Done ({halfDoneCount})</option>
-            <option value="Not Done">🔴 Not Done ({notDoneCount})</option>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="all">All Statuses</option>
+            <option value="Completed">Completed</option>
+            <option value="Half Done">Half Done</option>
+            <option value="Not Done">Not Done</option>
           </select>
         </label>
       </div>
 
       {loading ? (
-        <p className="muted">Loading workforce tasks…</p>
-      ) : filtered.length === 0 ? (
-        <p className="muted">No tasks found matching your filters.</p>
+        <p className="muted">Loading work history…</p>
+      ) : tasks.length === 0 ? (
+        <p className="muted">No work records found matching the active filters.</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Employee</th>
                 <th>Date</th>
+                <th>Day</th>
+                <th>Employee</th>
                 <th>Project</th>
                 <th>Task</th>
-                <th>Start</th>
-                <th>End</th>
+                <th>Start Time</th>
+                <th>End Time</th>
                 <th>Duration</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((task) => {
-                if (editing && editing.id === task.id) {
+              {tasks.map((task) => {
+                if (editingTask && editingTask.id === task.id) {
                   return (
                     <tr key={task.id}>
-                      <td>{task.user_name || 'Team Member'}</td>
                       <td>{formatShortDate(task.task_date)}</td>
+                      <td>{formatDay(task.task_date)}</td>
+                      <td><strong>{task.user_name}</strong></td>
                       <td>
-                        <input type="text" value={editing.project_name}
-                          onChange={(e) => setEditing({ ...editing, project_name: e.target.value })} />
+                        <input
+                          type="text"
+                          value={editingTask.project_name}
+                          onChange={(e) => setEditingTask({ ...editingTask, project_name: e.target.value })}
+                          required
+                        />
                       </td>
                       <td>
-                        <input type="text" value={editing.task_name}
-                          onChange={(e) => setEditing({ ...editing, task_name: e.target.value })} />
+                        <input
+                          type="text"
+                          value={editingTask.task_name}
+                          onChange={(e) => setEditingTask({ ...editingTask, task_name: e.target.value })}
+                          required
+                        />
                       </td>
-                      <td>
-                        <input type="text" value={editing.start_time}
-                          onChange={(e) => setEditing({ ...editing, start_time: e.target.value })} />
-                      </td>
-                      <td>
-                        <input type="text" value={editing.end_time}
-                          onChange={(e) => setEditing({ ...editing, end_time: e.target.value })} />
-                      </td>
+                      <td>{formatTime(task.start_time)}</td>
+                      <td>{formatTime(task.end_time) || '--'}</td>
                       <td>{formatDuration(task.duration_minutes) || '--'}</td>
                       <td>
-                        <select value={editing.status}
-                          onChange={(e) => setEditing({ ...editing, status: e.target.value })}>
-                          <option>Not Done</option>
-                          <option>Half Done</option>
-                          <option>Completed</option>
+                        <select
+                          value={editingTask.status}
+                          onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value })}
+                        >
+                          <option value="Not Done">🔴 Not Done</option>
+                          <option value="Half Done">🟡 Half Done</option>
+                          <option value="Completed">🟢 Completed</option>
                         </select>
                       </td>
                       <td className="actions-cell">
                         <button className="btn btn-primary btn-sm" onClick={handleSaveEdit}>Save</button>
-                        <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                        <button className="btn btn-outline btn-sm" onClick={() => setEditingTask(null)}>Cancel</button>
                       </td>
                     </tr>
                   )
                 }
                 return (
                   <tr key={task.id}>
+                    <td><strong>{formatShortDate(task.task_date)}</strong></td>
+                    <td>{formatDay(task.task_date)}</td>
                     <td>
                       <strong>{task.user_name || 'Team Member'}</strong>
                       {task.user_email && <div className="muted small-text">{task.user_email}</div>}
                     </td>
-                    <td>{formatShortDate(task.task_date)}</td>
                     <td><strong>{task.project_name}</strong></td>
                     <td>{task.task_name}</td>
                     <td>{formatTime(task.start_time)}</td>
                     <td>{formatTime(task.end_time) || '--'}</td>
-                    <td>{formatDuration(task.duration_minutes) || '--'}</td>
+                    <td>{task.duration_minutes != null ? formatDuration(task.duration_minutes) : '--'}</td>
                     <td>
-                      <span className={`task-badge ${TASK_STATUS_COLORS[task.status]}`}>
-                        {task.status === 'Completed'
-                          ? '🟢 Completed'
-                          : task.status === 'Half Done'
-                          ? '🟡 Half Done'
-                          : '🔴 Not Done'}
-                      </span>
+                      <select
+                        value={task.status}
+                        onChange={(e) => handleStatusChange(task, e.target.value)}
+                        className={`task-select ${TASK_STATUS_COLORS[task.status]}`}
+                      >
+                        <option value="Not Done">🔴 Not Done</option>
+                        <option value="Half Done">🟡 Half Done</option>
+                        <option value="Completed">🟢 Completed</option>
+                      </select>
                     </td>
                     <td className="actions-cell">
-                      <button className="btn btn-outline btn-sm" onClick={() => startEdit(task)}>Edit</button>
+                      <button
+                        className="btn btn-outline btn-sm"
+                        onClick={() => setEditingTask({
+                          id: task.id,
+                          project_name: task.project_name,
+                          task_name: task.task_name,
+                          status: task.status,
+                        })}
+                      >
+                        Edit
+                      </button>
                       <button className="btn btn-danger btn-sm" onClick={() => handleDelete(task.id)}>Delete</button>
                     </td>
                   </tr>

@@ -83,6 +83,8 @@ export const api = {
   attendance: {
     getToday: (date) => request(`/attendance/today${date ? `?date=${date}` : ''}`),
 
+    getSummary: (date) => request(`/attendance/summary${date ? `?date=${date}` : ''}`),
+
     checkIn: (date) =>
       request('/attendance/check-in', {
         method: 'POST',
@@ -99,6 +101,11 @@ export const api = {
 
     getAdminDate: (date) => request(`/attendance/admin/date/${date}`),
 
+    getAll: (params = {}) => {
+      const query = new URLSearchParams(params).toString()
+      return request(`/attendance/all${query ? `?${query}` : ''}`)
+    },
+
     getAdminCalendar: (startDate, endDate, userId = 'all') =>
       request(
         `/attendance/admin/calendar?startDate=${startDate}&endDate=${endDate}&userId=${userId}`
@@ -108,6 +115,11 @@ export const api = {
   // Tasks
   tasks: {
     getToday: (date) => request(`/tasks/today${date ? `?date=${date}` : ''}`),
+
+    getMy: (params = {}) => {
+      const query = new URLSearchParams(params).toString()
+      return request(`/tasks/my${query ? `?${query}` : ''}`)
+    },
 
     create: (project_name, task_name, task_date) =>
       request('/tasks', {

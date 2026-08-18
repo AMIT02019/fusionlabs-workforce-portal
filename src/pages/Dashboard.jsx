@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 import {
@@ -10,14 +11,18 @@ import {
 } from '../lib/format'
 import { statusClass } from '../lib/status'
 import TaskSection from '../components/TaskSection'
+import WorkHistory from '../components/WorkHistory'
 import AttendanceHistory from '../components/AttendanceHistory'
 import ChangePasswordModal from '../components/ChangePasswordModal'
 
 export default function Dashboard() {
   const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
   const today = dateKey(new Date())
 
   const [attendance, setAttendance] = useState(null)
+  const [dayMinutes, setDayMinutes] = useState(0)
+  const [weekMinutes, setWeekMinutes] = useState(0)
   const [loadingAtt, setLoadingAtt] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [attError, setAttError] = useState('')
@@ -25,12 +30,14 @@ export default function Dashboard() {
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [liveElapsedMinutes, setLiveElapsedMinutes] = useState(null)
 
-  const loadTodayAttendance = useCallback(async () => {
+  const loadSummary = useCallback(async () => {
     if (!profile) return
     setLoadingAtt(true)
     try {
-      const res = await api.attendance.getToday(today)
-      setAttendance(res.attendance || null)
+      const res = await api.attendance.getSummary(today)
+      setAttendance(res.today || null)
+      setDayMinutes(res.dayMinutes || 0)
+      setWeekMinutes(res.weekMinutes || 0)
     } catch (err) {
       setAttError(err.message)
     } finally {
@@ -39,8 +46,8 @@ export default function Dashboard() {
   }, [profile, today])
 
   useEffect(() => {
-    loadTodayAttendance()
-  }, [loadTodayAttendance])
+    loadSummary()
+  }, [loadSummary])
 
   // Live timer for active check-in
   useEffect(() => {
@@ -64,7 +71,8 @@ export default function Dashboard() {
     try {
       const res = await api.attendance.checkIn(today)
       setAttendance(res.attendance)
-      setAttSuccessMsg('🟢 Checked In successfully! Your attendance is recorded. You can add your tasks below or exit.')
+      setAttSuccessMsg(`🟢 Checked in at ${formatTime(res.attendance.check_in)}`)
+      await loadSummary()
     } catch (err) {
       setAttError(err.message)
     } finally {
@@ -80,7 +88,8 @@ export default function Dashboard() {
     try {
       const res = await api.attendance.checkOut(today)
       setAttendance(res.attendance)
-      setAttSuccessMsg('🏁 Checked Out successfully! Workday complete. You can now safely exit the portal.')
+      setAttSuccessMsg(`🏁 Checked out at ${formatTime(res.attendance.check_out)}. Workday completed!`)
+      await loadSummary()
     } catch (err) {
       setAttError(err.message)
     } finally {
@@ -88,28 +97,74 @@ export default function Dashboard() {
     }
   }
 
+  // Safe Exit: Navigates away to landing/home without deleting data or logging out
+  function handleExit() {
+    navigate('/', { replace: true })
+  }
+
   const checkedIn = !!attendance?.check_in
   const checkedOut = !!attendance?.check_out
   const status = attendance?.status || (checkedIn && !checkedOut ? 'IN PROGRESS' : 'ABSENT')
 
+  const displayDayHours =
+    attendance?.working_minutes != null
+      ? formatDuration(attendance.working_minutes)
+      : liveElapsedMinutes != null
+      ? `${formatDuration(liveElapsedMinutes)} (active)`
+      : dayMinutes > 0
+      ? formatDuration(dayMinutes)
+      : '0h'
+
+  const displayWeekHours =
+    weekMinutes > 0 ? formatDuration(weekMinutes) : '0h'
+
   return (
     <div className="dashboard">
+      {/* 3. DASHBOARD HEADER */}
       <div className="dash-top">
         <div>
-          <h1 className="dash-welcome">Welcome, {profile?.name}</h1>
+          <h1 className="dash-welcome">Welcome, {profile?.name || 'Employee'}</h1>
           <p className="dash-date">Today's Date: {formatLongDate(new Date())}</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button className="btn btn-outline" onClick={() => setShowPasswordModal(true)}>
-            🔒 Change Password
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-primary"
+            onClick={handleCheckIn}
+            disabled={checkedIn || loadingAtt || actionLoading}
+            style={{ fontWeight: 600 }}
+          >
+            {checkedIn ? '✅ CHECKED IN' : 'CHECK IN'}
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={handleCheckOut}
+            disabled={!checkedIn || checkedOut || loadingAtt || actionLoading}
+            style={{ fontWeight: 600 }}
+          >
+            {checkedOut ? '🏁 CHECKED OUT' : 'CHECK OUT'}
+          </button>
+          <button
+            className="btn btn-outline"
+            onClick={handleExit}
+            title="Safely exit to home page"
+            style={{ fontWeight: 600 }}
+          >
+            EXIT
           </button>
           <button
             className="btn btn-outline"
             onClick={signOut}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
-            title="Exit and Logout"
+            title="Log out and end session"
+            style={{ fontWeight: 600 }}
           >
-            🚪 Exit / Logout
+            LOGOUT
+          </button>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => setShowPasswordModal(true)}
+            title="Change Password"
+          >
+            🔒 Password
           </button>
         </div>
       </div>
@@ -128,19 +183,20 @@ export default function Dashboard() {
         >
           <div>{attSuccessMsg}</div>
           <button
-            className="btn btn-outline btn-sm"
-            onClick={signOut}
-            style={{ marginLeft: '16px', whiteSpace: 'nowrap', borderColor: '#16a34a', color: '#166534', background: '#ffffff' }}
+            onClick={() => setAttSuccessMsg('')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', marginLeft: '12px' }}
           >
-            🚪 Exit / Logout Now
+            &times;
           </button>
         </div>
       )}
 
-      {/* Attendance Card */}
+      {attError && <p className="form-error" style={{ marginBottom: '16px' }}>{attError}</p>}
+
+      {/* Attendance & Hours Overview Card */}
       <section className="card">
         <div className="section-head">
-          <h2 className="section-title">Today's Attendance</h2>
+          <h2 className="section-title">Today's Attendance & Working Hours</h2>
           {checkedOut && (
             <span className="status-badge status-present">
               ✅ Workday Finished
@@ -162,86 +218,34 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="att-field">
-            <span className="att-label">Working Hours:</span>
-            <span className="att-value">
-              {attendance?.working_minutes != null
-                ? formatDuration(attendance.working_minutes)
-                : liveElapsedMinutes != null
-                ? `${formatDuration(liveElapsedMinutes)} (Active)`
-                : '--'}
+            <span className="att-label">Day Hours:</span>
+            <span className="att-value" style={{ color: '#2563eb', fontWeight: 700 }}>
+              {displayDayHours}
             </span>
           </div>
           <div className="att-field">
-            <span className="att-label">Status:</span>
+            <span className="att-label">Week Hours (Mon-Sun):</span>
+            <span className="att-value" style={{ color: '#16a34a', fontWeight: 700 }}>
+              {displayWeekHours}
+            </span>
+          </div>
+          <div className="att-field">
+            <span className="att-label">Attendance Status:</span>
             <span className={`status-badge ${status === 'IN PROGRESS' ? 'status-halfday' : statusClass(status)}`}>
               {status === 'IN PROGRESS' ? '⏳ In Progress' : status || '--'}
             </span>
           </div>
         </div>
-
-        {attError && <p className="form-error">{attError}</p>}
-
-        <div className="att-actions" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            className="btn btn-primary"
-            onClick={handleCheckIn}
-            disabled={checkedIn || loadingAtt || actionLoading}
-          >
-            {checkedIn ? (attendance?.check_in ? `Checked in at ${formatTime(attendance.check_in)}` : 'Checked In') : 'CHECK IN'}
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={handleCheckOut}
-            disabled={!checkedIn || checkedOut || loadingAtt || actionLoading}
-          >
-            {checkedOut ? (attendance?.check_out ? `Checked out at ${formatTime(attendance.check_out)}` : 'Checked Out') : 'CHECK OUT'}
-          </button>
-
-          {/* Quick Exit / Close Button right next to Check in/out */}
-          <button
-            className="btn btn-outline"
-            onClick={signOut}
-            title="Exit workforce portal and return to login"
-            style={{ marginLeft: 'auto' }}
-          >
-            🚪 Exit / Close Session
-          </button>
-        </div>
       </section>
 
-      {/* Task Section */}
-      <TaskSection profile={profile} today={today} onExit={signOut} />
+      {/* 7. TODAY'S TASK SECTION */}
+      <TaskSection profile={profile} today={today} onTaskChange={loadSummary} />
 
-      {/* Attendance History */}
-      <AttendanceHistory profile={profile} />
+      {/* 14. WORK HISTORY SECTION */}
+      <WorkHistory profile={profile} />
 
-      {/* Session Finish & Exit Section at bottom */}
-      <div
-        style={{
-          marginTop: '24px',
-          padding: '16px 20px',
-          background: '#f8fafc',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <div>
-          <div style={{ fontWeight: 600, color: '#1e293b' }}>Finished for now?</div>
-          <div style={{ fontSize: '13px', color: '#64748b' }}>
-            All your attendance timestamps and task updates are automatically saved.
-          </div>
-        </div>
-        <button
-          className="btn btn-outline"
-          onClick={signOut}
-          style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
-          🚪 Exit & Logout
-        </button>
-      </div>
+      {/* 15. MY ATTENDANCE SECTION */}
+      <AttendanceHistory profile={profile} weekMinutes={weekMinutes} dayMinutes={dayMinutes} />
 
       {showPasswordModal && (
         <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />

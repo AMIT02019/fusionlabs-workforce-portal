@@ -18,7 +18,7 @@ async function ensureUser(user) {
   } catch (e) {}
 }
 
-// GET /api/tasks/today (Shared team tasks for today - visible to everyone)
+// GET /api/tasks/today (Shared team tasks for today)
 router.get('/today', authenticateToken, async (req, res) => {
   await ensureUser(req.user)
   const dateStr = req.query.date || new Date().toISOString().split('T')[0]
@@ -32,6 +32,46 @@ router.get('/today', authenticateToken, async (req, res) => {
     [dateStr]
   )
 
+  res.json({ tasks })
+})
+
+// GET /api/tasks/my (Logged in employee's own task history with filters)
+router.get('/my', authenticateToken, async (req, res) => {
+  await ensureUser(req.user)
+  const { date, fromDate, toDate, project, status } = req.query
+
+  let query = `
+    SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
+    FROM tasks t
+    LEFT JOIN users u ON t.user_id = u.id
+    WHERE t.user_id = ?
+  `
+  const params = [req.user.id]
+
+  if (date) {
+    query += ` AND t.task_date = ?`
+    params.push(date)
+  }
+  if (fromDate) {
+    query += ` AND t.task_date >= ?`
+    params.push(fromDate)
+  }
+  if (toDate) {
+    query += ` AND t.task_date <= ?`
+    params.push(toDate)
+  }
+  if (project && project.trim()) {
+    query += ` AND lower(t.project_name) LIKE ?`
+    params.push(`%${project.trim().toLowerCase()}%`)
+  }
+  if (status && status !== 'all') {
+    query += ` AND t.status = ?`
+    params.push(status)
+  }
+
+  query += ` ORDER BY t.task_date DESC, t.start_time DESC, t.created_at DESC`
+
+  const tasks = await db.all(query, params)
   res.json({ tasks })
 })
 
@@ -86,24 +126,26 @@ router.put('/:id', authenticateToken, async (req, res) => {
   let finalTask = task_name !== undefined ? task_name.trim() : task.task_name
   let finalStatus = status !== undefined ? status : task.status
   let finalStart = start_time !== undefined ? start_time : task.start_time
-  let finalEnd = end_time !== undefined ? end_time : task.end_time
-  let finalDuration = duration_minutes !== undefined ? duration_minutes : task.duration_minutes
+  let finalEnd = task.end_time
+  let finalDuration = task.duration_minutes
 
-  // Auto-calculate end_time & duration if marked completed and end_time not provided
-  if (finalStatus === 'Completed' && !finalEnd) {
+  // CRITICAL STATUS RULES:
+  if (finalStatus === 'Completed') {
+    // If transitioning to Completed or explicit end_time provided, create new completion time
     const now = new Date()
-    finalEnd = now.toISOString()
+    finalEnd = end_time || now.toISOString()
     const s = new Date(finalStart).getTime()
-    const e = now.getTime()
+    const e = new Date(finalEnd).getTime()
     finalDuration = Math.max(0, Math.round((e - s) / 60000))
-  } else if (finalStatus !== 'Completed' && end_time === undefined) {
+  } else {
+    // If status is 'Not Done' or 'Half Done', REMOVE end_time and duration_minutes
     finalEnd = null
     finalDuration = null
   }
 
   await db.run(
     `UPDATE tasks
-     SET project_name = ?, task_name = ?, status = ?, start_time = ?, end_time = ?, duration_minutes = ?
+     SET project_name = ?, task_name = ?, status = ?, start_time = ?, end_time = ?, duration_minutes = ?, updated_at = NOW()
      WHERE id = ?`,
     [finalProject, finalTask, finalStatus, finalStart, finalEnd, finalDuration, taskId]
   )
@@ -137,9 +179,9 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   res.json({ message: 'Task deleted successfully' })
 })
 
-// GET /api/tasks/all (Admin / Manager query for all workforce work with filters)
+// GET /api/tasks/all (Admin query for all workforce work with filters)
 router.get('/all', authenticateToken, async (req, res) => {
-  const { userId, date, status } = req.query
+  const { userId, date, fromDate, toDate, project, status, search } = req.query
 
   let query = `
     SELECT t.*, COALESCE(u.name, 'Team Member') as user_name, u.email as user_email
@@ -157,9 +199,26 @@ router.get('/all', authenticateToken, async (req, res) => {
     query += ` AND t.task_date = ?`
     params.push(date)
   }
+  if (fromDate) {
+    query += ` AND t.task_date >= ?`
+    params.push(fromDate)
+  }
+  if (toDate) {
+    query += ` AND t.task_date <= ?`
+    params.push(toDate)
+  }
+  if (project && project.trim()) {
+    query += ` AND lower(t.project_name) LIKE ?`
+    params.push(`%${project.trim().toLowerCase()}%`)
+  }
   if (status && status !== 'all') {
     query += ` AND t.status = ?`
     params.push(status)
+  }
+  if (search && search.trim()) {
+    query += ` AND (lower(u.name) LIKE ? OR lower(u.email) LIKE ? OR lower(t.project_name) LIKE ? OR lower(t.task_name) LIKE ?)`
+    const term = `%${search.trim().toLowerCase()}%`
+    params.push(term, term, term, term)
   }
 
   query += ` ORDER BY t.task_date DESC, t.start_time DESC, t.created_at DESC`

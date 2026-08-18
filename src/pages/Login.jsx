@@ -49,7 +49,7 @@ export default function Login() {
         navigate('/dashboard', { replace: true })
       }
     } catch (err) {
-      setError(err.message || 'Invalid work email or password. Please try again.')
+      setError(err.message || 'Invalid email or password.')
       setLoading(false)
     }
   }

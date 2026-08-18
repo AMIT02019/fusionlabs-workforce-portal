@@ -7,7 +7,7 @@ import {
 } from '../lib/format'
 import { TASK_STATUS_COLORS } from '../lib/status'
 
-export default function TaskSection({ profile, today, onExit }) {
+export default function TaskSection({ profile, today, onTaskChange }) {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -16,12 +16,12 @@ export default function TaskSection({ profile, today, onExit }) {
   const [error, setError] = useState('')
   const [taskMessage, setTaskMessage] = useState('')
   const [editing, setEditing] = useState(null)
-  const [viewFilter, setViewFilter] = useState('all') // 'all' or 'my'
 
   const loadTasks = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true)
     try {
-      const res = await api.tasks.getToday(today)
+      // Load today's tasks for current employee
+      const res = await api.tasks.getMy({ date: today })
       setTasks(res.tasks || [])
     } catch (err) {
       if (!isBackground) setError(err.message)
@@ -32,9 +32,6 @@ export default function TaskSection({ profile, today, onExit }) {
 
   useEffect(() => {
     loadTasks()
-    // Poll every 8 seconds so everyone's live tasks update in real-time
-    const interval = setInterval(() => loadTasks(true), 8000)
-    return () => clearInterval(interval)
   }, [loadTasks])
 
   async function handleAddTask(e) {
@@ -55,6 +52,7 @@ export default function TaskSection({ profile, today, onExit }) {
       setTaskMessage('✅ Task added successfully!')
       setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
+      if (onTaskChange) onTaskChange()
     } catch (err) {
       setError(err.message)
     }
@@ -64,9 +62,10 @@ export default function TaskSection({ profile, today, onExit }) {
     setError('')
     try {
       await api.tasks.update(task.id, { status: newStatus })
-      setTaskMessage(`✅ Task marked as "${newStatus}"!`)
+      setTaskMessage(`✅ Task status updated to "${newStatus}"!`)
       setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
+      if (onTaskChange) onTaskChange()
     } catch (err) {
       setError(err.message)
     }
@@ -86,6 +85,7 @@ export default function TaskSection({ profile, today, onExit }) {
       setTaskMessage('✅ Task updated successfully!')
       setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
+      if (onTaskChange) onTaskChange()
     } catch (err) {
       setError(err.message)
     }
@@ -95,9 +95,10 @@ export default function TaskSection({ profile, today, onExit }) {
     if (!confirm('Are you sure you want to delete this task?')) return
     try {
       await api.tasks.delete(taskId)
-      setTaskMessage('🗑️ Task removed.')
+      setTaskMessage('🗑️ Task deleted.')
       setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
+      if (onTaskChange) onTaskChange()
     } catch (err) {
       setError(err.message)
     }
@@ -109,46 +110,21 @@ export default function TaskSection({ profile, today, onExit }) {
       project_name: task.project_name,
       task_name: task.task_name,
       status: task.status,
-      _originalStatus: task.status,
     })
   }
 
-  const displayedTasks = tasks.filter((t) => {
-    if (viewFilter === 'my') {
-      return t.user_id === profile?.id
-    }
-    return true
-  })
-
-  const myCount = tasks.filter((t) => t.user_id === profile?.id).length
-
   return (
-    <section className="card">
+    <section className="card" style={{ marginTop: '24px' }}>
       <div className="section-head">
         <div>
-          <h2 className="section-title">Today's Team Tasks ({tasks.length})</h2>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-            <button
-              className={`btn btn-sm ${viewFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => setViewFilter('all')}
-              style={{ fontSize: '11px', padding: '3px 10px' }}
-            >
-              👥 All Team Tasks ({tasks.length})
-            </button>
-            <button
-              className={`btn btn-sm ${viewFilter === 'my' ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => setViewFilter('my')}
-              style={{ fontSize: '11px', padding: '3px 10px' }}
-            >
-              👤 My Tasks ({myCount})
-            </button>
-          </div>
+          <h2 className="section-title">Today's Tasks ({tasks.length})</h2>
+          <p className="muted" style={{ fontSize: '13px', margin: '4px 0 0 0' }}>
+            Add, update, or track your assignments for today
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
-            {showForm ? '✖ Close Form' : '+ Add Task'}
-          </button>
-        </div>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
+          {showForm ? '✖ Close Form' : '+ Add Task'}
+        </button>
       </div>
 
       {taskMessage && (
@@ -190,17 +166,14 @@ export default function TaskSection({ profile, today, onExit }) {
       )}
 
       {loading ? (
-        <p className="muted">Loading tasks…</p>
-      ) : displayedTasks.length === 0 ? (
-        <p className="muted">
-          {viewFilter === 'my' ? 'You have not added any tasks today.' : 'No tasks added yet by the team today.'}
-        </p>
+        <p className="muted">Loading today's tasks…</p>
+      ) : tasks.length === 0 ? (
+        <p className="muted">No tasks added yet for today. Click "+ Add Task" to begin.</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Team Member</th>
                 <th>Project</th>
                 <th>Task</th>
                 <th>Start Time</th>
@@ -211,17 +184,16 @@ export default function TaskSection({ profile, today, onExit }) {
               </tr>
             </thead>
             <tbody>
-              {displayedTasks.map((task) => {
-                const isOwner = task.user_id === profile?.id
+              {tasks.map((task) => {
                 if (editing && editing.id === task.id) {
                   return (
                     <tr key={task.id}>
-                      <td>{task.user_name || 'Team Member'}</td>
                       <td>
                         <input
                           type="text"
                           value={editing.project_name}
                           onChange={(e) => setEditing({ ...editing, project_name: e.target.value })}
+                          required
                         />
                       </td>
                       <td>
@@ -229,6 +201,7 @@ export default function TaskSection({ profile, today, onExit }) {
                           type="text"
                           value={editing.task_name}
                           onChange={(e) => setEditing({ ...editing, task_name: e.target.value })}
+                          required
                         />
                       </td>
                       <td>{formatTime(task.start_time)}</td>
@@ -253,11 +226,6 @@ export default function TaskSection({ profile, today, onExit }) {
                 }
                 return (
                   <tr key={task.id}>
-                    <td>
-                      <strong>{task.user_name || 'Team Member'}</strong>
-                      {isOwner && <span className="muted small-text"> (You)</span>}
-                      {task.user_email && <div className="muted small-text">{task.user_email}</div>}
-                    </td>
                     <td><strong>{task.project_name}</strong></td>
                     <td>{task.task_name}</td>
                     <td>{formatTime(task.start_time)}</td>
@@ -270,35 +238,19 @@ export default function TaskSection({ profile, today, onExit }) {
                         : `${formatDuration(minutesBetween(task.start_time, new Date()))} (active)`}
                     </td>
                     <td>
-                      {isOwner ? (
-                        <select
-                          value={task.status}
-                          onChange={(e) => handleStatusChange(task, e.target.value)}
-                          className={`task-select ${TASK_STATUS_COLORS[task.status]}`}
-                        >
-                          <option value="Not Done">🔴 Not Done</option>
-                          <option value="Half Done">🟡 Half Done</option>
-                          <option value="Completed">🟢 Completed</option>
-                        </select>
-                      ) : (
-                        <span className={`task-badge ${TASK_STATUS_COLORS[task.status]}`}>
-                          {task.status === 'Completed'
-                            ? '🟢 Completed'
-                            : task.status === 'Half Done'
-                            ? '🟡 Half Done'
-                            : '🔴 Not Done'}
-                        </span>
-                      )}
+                      <select
+                        value={task.status}
+                        onChange={(e) => handleStatusChange(task, e.target.value)}
+                        className={`task-select ${TASK_STATUS_COLORS[task.status]}`}
+                      >
+                        <option value="Not Done">🔴 Not Done</option>
+                        <option value="Half Done">🟡 Half Done</option>
+                        <option value="Completed">🟢 Completed</option>
+                      </select>
                     </td>
                     <td className="actions-cell">
-                      {isOwner ? (
-                        <>
-                          <button className="btn btn-outline btn-sm" onClick={() => startEdit(task)}>Edit</button>
-                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(task.id)}>Delete</button>
-                        </>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
+                      <button className="btn btn-outline btn-sm" onClick={() => startEdit(task)}>Edit</button>
+                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(task.id)}>Delete</button>
                     </td>
                   </tr>
                 )

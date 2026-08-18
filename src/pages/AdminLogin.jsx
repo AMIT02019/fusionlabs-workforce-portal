@@ -32,7 +32,7 @@ export default function AdminLogin() {
       const res = await api.auth.login(cleanEmail, password)
 
       if (res.user?.role !== 'admin') {
-        setError('Access denied: This account does not have administrator privileges.')
+        setError('You do not have permission to access the admin panel.')
         setLoading(false)
         return
       }
@@ -40,7 +40,7 @@ export default function AdminLogin() {
       signIn(res.user, res.token)
       navigate('/admin', { replace: true })
     } catch (err) {
-      setError(err.message || 'Invalid administrator email or password. Please try again.')
+      setError(err.message || 'Invalid email or password.')
       setLoading(false)
     }
   }

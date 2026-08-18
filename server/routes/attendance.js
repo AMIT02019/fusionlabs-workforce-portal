@@ -26,6 +26,23 @@ async function ensureUser(user) {
   } catch (e) {}
 }
 
+// Helper: Get Monday and Sunday of current week in YYYY-MM-DD
+function getWeekRange(d = new Date()) {
+  const date = new Date(d)
+  const day = date.getDay() // 0 is Sunday, 1 is Monday
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const monday = new Date(date)
+  monday.setDate(date.getDate() + diffToMonday)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+
+  const format = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+  return {
+    monday: format(monday),
+    sunday: format(sunday),
+  }
+}
+
 // GET /api/attendance/today (Logged in user's attendance today)
 router.get('/today', authenticateToken, async (req, res) => {
   await ensureUser(req.user)
@@ -36,6 +53,50 @@ router.get('/today', authenticateToken, async (req, res) => {
   )
 
   res.json({ attendance: record || null })
+})
+
+// GET /api/attendance/summary (Today hours + Week hours Monday-Sunday for logged-in user)
+router.get('/summary', authenticateToken, async (req, res) => {
+  await ensureUser(req.user)
+  const todayStr = req.query.date || new Date().toISOString().split('T')[0]
+  const { monday, sunday } = getWeekRange(new Date(todayStr))
+
+  // 1. Today's attendance
+  const todayRecord = await db.get(
+    `SELECT * FROM attendance WHERE user_id = ? AND attendance_date = ?`,
+    [req.user.id, todayStr]
+  )
+
+  // 2. Week's attendance (Monday through Sunday)
+  const weekRecords = await db.all(
+    `SELECT * FROM attendance 
+     WHERE user_id = ? AND attendance_date >= ? AND attendance_date <= ?
+     ORDER BY attendance_date ASC`,
+    [req.user.id, monday, sunday]
+  )
+
+  let weekMinutes = 0
+  weekRecords.forEach((r) => {
+    if (r.working_minutes != null) {
+      weekMinutes += Number(r.working_minutes)
+    }
+  })
+
+  // If today is active (checked in and not checked out), include live elapsed minutes for today & week
+  let todayDayMinutes = todayRecord?.working_minutes || 0
+  if (todayRecord?.check_in && !todayRecord?.check_out) {
+    const elapsed = Math.max(0, Math.round((Date.now() - new Date(todayRecord.check_in).getTime()) / 60000))
+    todayDayMinutes = elapsed
+    weekMinutes += elapsed
+  }
+
+  res.json({
+    today: todayRecord || null,
+    dayMinutes: todayDayMinutes,
+    weekMinutes,
+    weekRange: { monday, sunday },
+    weekRecords,
+  })
 })
 
 // POST /api/attendance/check-in
@@ -105,7 +166,7 @@ router.post('/check-out', authenticateToken, async (req, res) => {
   res.json({ message: 'Checked out successfully', attendance: record })
 })
 
-// GET /api/attendance/history (Last 30 attendance records for current user)
+// GET /api/attendance/history (Attendance records for current user)
 router.get('/history', authenticateToken, async (req, res) => {
   await ensureUser(req.user)
   const records = await db.all(
@@ -113,7 +174,7 @@ router.get('/history', authenticateToken, async (req, res) => {
      FROM attendance 
      WHERE user_id = ? 
      ORDER BY attendance_date DESC 
-     LIMIT 30`,
+     LIMIT 60`,
     [req.user.id]
   )
 
@@ -132,6 +193,42 @@ router.get('/admin/date/:date', authenticateToken, requireAdmin, async (req, res
     [dateStr]
   )
 
+  res.json({ records })
+})
+
+// GET /api/attendance/all (Admin: query all employee attendance with employee filter and date range)
+router.get('/all', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId, fromDate, toDate, search } = req.query
+
+  let query = `
+    SELECT a.*, u.name, u.email
+    FROM attendance a
+    JOIN users u ON a.user_id = u.id
+    WHERE u.role != 'admin'
+  `
+  const params = []
+
+  if (userId && userId !== 'all') {
+    query += ` AND a.user_id = ?`
+    params.push(userId)
+  }
+  if (fromDate) {
+    query += ` AND a.attendance_date >= ?`
+    params.push(fromDate)
+  }
+  if (toDate) {
+    query += ` AND a.attendance_date <= ?`
+    params.push(toDate)
+  }
+  if (search && search.trim()) {
+    query += ` AND (lower(u.name) LIKE ? OR lower(u.email) LIKE ?)`
+    const term = `%${search.trim().toLowerCase()}%`
+    params.push(term, term)
+  }
+
+  query += ` ORDER BY a.attendance_date DESC, a.check_in DESC`
+
+  const records = await db.all(query, params)
   res.json({ records })
 })
 
