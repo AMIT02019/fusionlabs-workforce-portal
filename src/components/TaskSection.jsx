@@ -20,7 +20,6 @@ export default function TaskSection({ profile, today, onTaskChange }) {
   const loadTasks = useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true)
     try {
-      // Load today's tasks for current employee
       const res = await api.tasks.getMy({ date: today })
       setTasks(res.tasks || [])
     } catch (err) {
@@ -62,7 +61,7 @@ export default function TaskSection({ profile, today, onTaskChange }) {
     setError('')
     try {
       await api.tasks.update(task.id, { status: newStatus })
-      setTaskMessage(`✅ Task status updated to "${newStatus}"!`)
+      setTaskMessage(`✅ Task marked as "${newStatus}"!`)
       setTimeout(() => setTaskMessage(''), 4000)
       await loadTasks()
       if (onTaskChange) onTaskChange()
@@ -114,15 +113,14 @@ export default function TaskSection({ profile, today, onTaskChange }) {
   }
 
   return (
-    <section className="card" style={{ marginTop: '24px' }}>
+    <section className="card" style={{ marginTop: '20px' }}>
       <div className="section-head">
-        <div>
-          <h2 className="section-title">Today's Tasks ({tasks.length})</h2>
-          <p className="muted" style={{ fontSize: '13px', margin: '4px 0 0 0' }}>
-            Add, update, or track your assignments for today
-          </p>
-        </div>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm((s) => !s)}>
+        <h2 className="section-title">Today's Task</h2>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setShowForm((s) => !s)}
+          style={{ fontWeight: 600 }}
+        >
           {showForm ? '✖ Close Form' : '+ Add Task'}
         </button>
       </div>
@@ -139,7 +137,7 @@ export default function TaskSection({ profile, today, onTaskChange }) {
       {showForm && (
         <form onSubmit={handleAddTask} className="inline-form" style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
           <label className="field">
-            <span>Project Name</span>
+            <span>Project</span>
             <input
               type="text"
               placeholder="e.g. Website Redesign"
@@ -166,9 +164,9 @@ export default function TaskSection({ profile, today, onTaskChange }) {
       )}
 
       {loading ? (
-        <p className="muted">Loading today's tasks…</p>
+        <p className="muted">Loading tasks…</p>
       ) : tasks.length === 0 ? (
-        <p className="muted">No tasks added yet for today. Click "+ Add Task" to begin.</p>
+        <p className="muted">No tasks added yet for today. Click "+ Add Task" to create one.</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">

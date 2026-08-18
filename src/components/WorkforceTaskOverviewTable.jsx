@@ -3,7 +3,6 @@ import { api } from '../lib/api'
 import {
   formatTime,
   formatDuration,
-  dateKey,
 } from '../lib/format'
 import { TASK_STATUS_COLORS } from '../lib/status'
 import { exportToCSV } from '../lib/export'
@@ -36,17 +35,17 @@ export default function WorkforceTaskOverviewTable({ currentUserId, today }) {
 
   function handleExportOverview() {
     const headers = [
-      'Employee',
+      'Emp Name',
       'Date',
       'Project',
       'Task',
-      'Check In',
-      'Day Hours',
-      'Week Hours',
-      'Task Status',
+      'Checkin',
+      'Daily Hour',
+      'Weekly Hour',
+      'Status',
     ]
     const rows = tasks.map((t) => [
-      t.user_name || 'Team Member',
+      t.user_name || 'Employee',
       t.task_date,
       t.project_name,
       t.task_name,
@@ -59,13 +58,27 @@ export default function WorkforceTaskOverviewTable({ currentUserId, today }) {
   }
 
   return (
-    <section className="card" style={{ marginTop: '20px' }}>
-      <div className="section-head">
-        <div>
-          <h2 className="section-title">Team Work & Attendance Overview</h2>
-          <p className="muted" style={{ fontSize: '13px', margin: '4px 0 0 0' }}>
-            Live status of projects, tasks, check-in timestamps, and working hours
-          </p>
+    <section className="card" style={{ marginTop: '16px' }}>
+      {/* Filter Row: Day [ date ] to Day [ date ] */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>Day</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            max={toDate}
+            style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+          />
+          <span style={{ color: '#64748b', fontSize: '14px', fontWeight: 500 }}>to</span>
+          <span style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>Day</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            min={fromDate}
+            style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+          />
         </div>
         <button
           className="btn btn-outline btn-sm"
@@ -76,55 +89,23 @@ export default function WorkforceTaskOverviewTable({ currentUserId, today }) {
         </button>
       </div>
 
-      {/* Date Filter Bar: Date [ from ] to [ to ] */}
-      <div className="filters-bar" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>Date</span>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            max={toDate}
-            style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-          />
-          <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 500 }}>to</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            min={fromDate}
-            style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-          />
-        </div>
-        <button
-          className="btn btn-outline btn-sm"
-          onClick={() => {
-            setFromDate(today)
-            setToDate(today)
-          }}
-          style={{ fontSize: '12px', padding: '4px 10px' }}
-        >
-          Reset to Today
-        </button>
-      </div>
-
       {error && <p className="form-error">{error}</p>}
 
       {loading ? (
-        <p className="muted">Loading workforce overview…</p>
+        <p className="muted">Loading table…</p>
       ) : tasks.length === 0 ? (
-        <p className="muted">No work records found for the selected date range.</p>
+        <p className="muted">No records for selected day range.</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Employee</th>
+                <th>Emp Name</th>
                 <th>Project</th>
                 <th>Task</th>
-                <th>Check In</th>
-                <th>Day hr</th>
-                <th>Week hr</th>
+                <th>Checkin</th>
+                <th>Daily Hour</th>
+                <th>Weekly Hour</th>
               </tr>
             </thead>
             <tbody>
@@ -133,7 +114,7 @@ export default function WorkforceTaskOverviewTable({ currentUserId, today }) {
                 return (
                   <tr key={task.id}>
                     <td>
-                      <strong>{task.user_name || 'Team Member'}</strong>
+                      <strong>{task.user_name || 'Employee'}</strong>
                       {isYou && <span className="muted small-text"> (You)</span>}
                     </td>
                     <td><strong>{task.project_name}</strong></td>

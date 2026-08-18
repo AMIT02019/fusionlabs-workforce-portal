@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 import {
@@ -8,15 +8,14 @@ import {
   dateKey,
 } from '../lib/format'
 import WorkforceTaskOverviewTable from '../components/WorkforceTaskOverviewTable'
-import TodayAttendanceList from '../components/TodayAttendanceList'
 import TaskSection from '../components/TaskSection'
+import TodayAttendanceList from '../components/TodayAttendanceList'
 import WorkHistory from '../components/WorkHistory'
 import AttendanceHistory from '../components/AttendanceHistory'
 import ChangePasswordModal from '../components/ChangePasswordModal'
 
 export default function Dashboard() {
   const { profile, signOut } = useAuth()
-  const navigate = useNavigate()
   const today = dateKey(new Date())
 
   const [attendance, setAttendance] = useState(null)
@@ -83,63 +82,39 @@ export default function Dashboard() {
     }
   }
 
-  // Safe Exit: Navigates away safely without deleting records
-  function handleExit() {
-    navigate('/', { replace: true })
-  }
-
   const checkedIn = !!attendance?.check_in
   const checkedOut = !!attendance?.check_out
 
   return (
-    <div className="dashboard">
-      {/* 1. TOP HEADER: Welcome (Left) | Check In / Check Out / Exit / Logout (Right) */}
-      <div className="dash-top">
-        <div>
-          <h1 className="dash-welcome">Welcome, {profile?.name || 'Employee'}</h1>
-          <p className="dash-date">Today's Date: {formatLongDate(new Date())}</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+    <div className="dashboard" style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px 20px' }}>
+      {/* 1. TOP HEADER: Welcome, Name (Left) | Checkin / Checkout (Right) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '8px' }}>
+        <h1 className="dash-welcome" style={{ fontSize: '26px', fontWeight: 700, margin: 0 }}>
+          Welcome, {profile?.name || 'Name'}
+        </h1>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button
             className="btn btn-primary"
             onClick={handleCheckIn}
             disabled={checkedIn || loadingAtt || actionLoading}
-            style={{ fontWeight: 700, padding: '8px 18px' }}
+            style={{ fontWeight: 600, padding: '8px 20px', borderRadius: '6px' }}
           >
-            {checkedIn ? '✅ CHECKED IN' : 'CHECK IN'}
+            {checkedIn ? 'Checkin ✅' : 'Checkin'}
           </button>
           <button
             className="btn btn-primary"
             onClick={handleCheckOut}
             disabled={!checkedIn || checkedOut || loadingAtt || actionLoading}
-            style={{ fontWeight: 700, padding: '8px 18px' }}
+            style={{ fontWeight: 600, padding: '8px 20px', borderRadius: '6px' }}
           >
-            {checkedOut ? '🏁 CHECKED OUT' : 'CHECK OUT'}
-          </button>
-          <button
-            className="btn btn-outline"
-            onClick={handleExit}
-            title="Safely exit to home page"
-            style={{ fontWeight: 600 }}
-          >
-            EXIT
-          </button>
-          <button
-            className="btn btn-outline"
-            onClick={signOut}
-            title="Log out and end session"
-            style={{ fontWeight: 600 }}
-          >
-            LOGOUT
-          </button>
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={() => setShowPasswordModal(true)}
-            title="Change Password"
-          >
-            🔒 Password
+            {checkedOut ? 'Checkout 🏁' : 'Checkout'}
           </button>
         </div>
+      </div>
+
+      {/* 2. SUB-HEADER: Today's Date: */}
+      <div style={{ fontSize: '15px', color: '#475569', fontWeight: 500, marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #e2e8f0' }}>
+        <strong>Today's Date:</strong> {formatLongDate(new Date())}
       </div>
 
       {attSuccessMsg && (
@@ -166,21 +141,14 @@ export default function Dashboard() {
 
       {attError && <p className="form-error" style={{ marginBottom: '16px' }}>{attError}</p>}
 
-      {/* 2. TOP TABLE: Date [from] to [to] | Employee | Project | Task | Check In | Day hr | Week hr */}
+      {/* 3. TOP TABLE CARD: Day [ ] to Day [ ] | Emp Name | Project | Task | Checkin | Daily Hour | Weekly Hour */}
       <WorkforceTaskOverviewTable
         key={refreshKey}
         currentUserId={profile?.id}
         today={today}
       />
 
-      {/* 3. TODAY'S ATTENDANCE SECTION: Employee | Status */}
-      <TodayAttendanceList
-        key={`att-${refreshKey}`}
-        today={today}
-        currentUserId={profile?.id}
-      />
-
-      {/* 4. INDV. TASKS (Individual / Today's Tasks Section) */}
+      {/* 4. TODAY'S TASK CARD: Today's Task | + Add Task */}
       <TaskSection
         profile={profile}
         today={today}
@@ -190,45 +158,47 @@ export default function Dashboard() {
         }}
       />
 
-      {/* 5. WORK HISTORY SECTION */}
+      {/* 5. TODAY'S MY ATTENDANCE CARD: Employee | Status */}
+      <TodayAttendanceList
+        key={`att-${refreshKey}`}
+        today={today}
+        currentUserId={profile?.id}
+      />
+
+      {/* 6. WORK HISTORY & ATTENDANCE HISTORY */}
       <WorkHistory profile={profile} />
 
-      {/* 6. MY ATTENDANCE SECTION WITH WEEKLY EXPORT */}
       <AttendanceHistory
         profile={profile}
         weekMinutes={weekMinutes}
         dayMinutes={dayMinutes}
       />
 
-      {/* 7. BOTTOM: Admin Panel Link */}
-      <div
-        style={{
-          marginTop: '32px',
-          marginBottom: '20px',
-          textAlign: 'center',
-          padding: '20px',
-          background: '#f8fafc',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-        }}
-      >
-        <div style={{ marginBottom: '10px', color: '#64748b', fontSize: '13px' }}>
-          Are you an administrator?
-        </div>
+      {/* 7. BOTTOM CONTROLS: Logout / Change Pass (Right aligned as in wireframe) */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '28px', flexWrap: 'wrap' }}>
+        <button
+          className="btn btn-outline"
+          onClick={signOut}
+          style={{ fontWeight: 600, padding: '8px 22px' }}
+        >
+          Logout
+        </button>
+        <button
+          className="btn btn-outline"
+          onClick={() => setShowPasswordModal(true)}
+          style={{ fontWeight: 600, padding: '8px 22px' }}
+        >
+          Change Pass
+        </button>
+      </div>
+
+      {/* Admin Switch Link */}
+      <div style={{ marginTop: '24px', textAlign: 'center' }}>
         <Link
           to="/admin-login"
-          className="btn btn-outline"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontWeight: 600,
-            fontSize: '14px',
-            borderColor: '#64748b',
-            color: '#334155',
-          }}
+          style={{ color: '#64748b', fontSize: '13px', textDecoration: 'none' }}
         >
-          🛡️ Admin Panel &rarr;
+          🛡️ Switch to Admin Portal &rarr;
         </Link>
       </div>
 

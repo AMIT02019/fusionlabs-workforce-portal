@@ -26,18 +26,13 @@ export default function TodayAttendanceList({ today, currentUserId }) {
   }, [load])
 
   return (
-    <section className="card" style={{ marginTop: '24px' }}>
+    <section className="card" style={{ marginTop: '20px' }}>
       <div className="section-head">
-        <div>
-          <h2 className="section-title">Today's Attendance</h2>
-          <p className="muted" style={{ fontSize: '13px', margin: '4px 0 0 0' }}>
-            Live attendance status across all team members today
-          </p>
-        </div>
+        <h2 className="section-title">Today's My Attendance</h2>
       </div>
 
       {loading ? (
-        <p className="muted">Loading today's attendance…</p>
+        <p className="muted">Loading attendance status…</p>
       ) : employees.length === 0 ? (
         <p className="muted">No employee attendance records for today.</p>
       ) : (
