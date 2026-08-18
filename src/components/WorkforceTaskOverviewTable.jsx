@@ -58,34 +58,37 @@ export default function WorkforceTaskOverviewTable({ currentUserId, today }) {
   }
 
   return (
-    <section className="card" style={{ marginTop: '16px' }}>
-      {/* Filter Row: Day [ date ] to Day [ date ] */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>Day</span>
+    <section className="card" style={{ marginTop: '16px', padding: '20px' }}>
+      {/* Centered Filter Row: Day [ date ] to Day [ date ] as in the wireframe */}
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 600, fontSize: '15px', color: '#1e293b' }}>Day</span>
           <input
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             max={toDate}
-            style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+            style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
           />
-          <span style={{ color: '#64748b', fontSize: '14px', fontWeight: 500 }}>to</span>
-          <span style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>Day</span>
+        </div>
+        <span style={{ color: '#475569', fontSize: '15px', fontWeight: 500 }}>to</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 600, fontSize: '15px', color: '#1e293b' }}>Day</span>
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             min={fromDate}
-            style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+            style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '14px' }}
           />
         </div>
         <button
           className="btn btn-outline btn-sm"
           onClick={handleExportOverview}
           disabled={tasks.length === 0}
+          style={{ marginLeft: '12px', fontSize: '12px' }}
         >
-          📥 Export CSV
+          Export CSV
         </button>
       </div>
 
@@ -94,7 +97,7 @@ export default function WorkforceTaskOverviewTable({ currentUserId, today }) {
       {loading ? (
         <p className="muted">Loading table…</p>
       ) : tasks.length === 0 ? (
-        <p className="muted">No records for selected day range.</p>
+        <p className="muted">No work records for selected day range.</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">

@@ -9,9 +9,7 @@ import {
 } from '../lib/format'
 import WorkforceTaskOverviewTable from '../components/WorkforceTaskOverviewTable'
 import TaskSection from '../components/TaskSection'
-import TodayAttendanceList from '../components/TodayAttendanceList'
-import WorkHistory from '../components/WorkHistory'
-import AttendanceHistory from '../components/AttendanceHistory'
+import MyTodayAttendance from '../components/MyTodayAttendance'
 import ChangePasswordModal from '../components/ChangePasswordModal'
 
 export default function Dashboard() {
@@ -19,8 +17,6 @@ export default function Dashboard() {
   const today = dateKey(new Date())
 
   const [attendance, setAttendance] = useState(null)
-  const [dayMinutes, setDayMinutes] = useState(0)
-  const [weekMinutes, setWeekMinutes] = useState(0)
   const [loadingAtt, setLoadingAtt] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [attError, setAttError] = useState('')
@@ -34,8 +30,6 @@ export default function Dashboard() {
     try {
       const res = await api.attendance.getSummary(today)
       setAttendance(res.today || null)
-      setDayMinutes(res.dayMinutes || 0)
-      setWeekMinutes(res.weekMinutes || 0)
     } catch (err) {
       setAttError(err.message)
     } finally {
@@ -86,10 +80,10 @@ export default function Dashboard() {
   const checkedOut = !!attendance?.check_out
 
   return (
-    <div className="dashboard" style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px 20px' }}>
+    <div className="dashboard" style={{ maxWidth: '1080px', margin: '0 auto', padding: '24px 20px' }}>
       {/* 1. TOP HEADER: Welcome, Name (Left) | Checkin / Checkout (Right) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '8px' }}>
-        <h1 className="dash-welcome" style={{ fontSize: '26px', fontWeight: 700, margin: 0 }}>
+        <h1 className="dash-welcome" style={{ fontSize: '26px', fontWeight: 700, margin: 0, color: '#0f172a' }}>
           Welcome, {profile?.name || 'Name'}
         </h1>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -97,7 +91,7 @@ export default function Dashboard() {
             className="btn btn-primary"
             onClick={handleCheckIn}
             disabled={checkedIn || loadingAtt || actionLoading}
-            style={{ fontWeight: 600, padding: '8px 20px', borderRadius: '6px' }}
+            style={{ fontWeight: 600, padding: '8px 22px', borderRadius: '6px' }}
           >
             {checkedIn ? 'Checkin ✅' : 'Checkin'}
           </button>
@@ -105,7 +99,7 @@ export default function Dashboard() {
             className="btn btn-primary"
             onClick={handleCheckOut}
             disabled={!checkedIn || checkedOut || loadingAtt || actionLoading}
-            style={{ fontWeight: 600, padding: '8px 20px', borderRadius: '6px' }}
+            style={{ fontWeight: 600, padding: '8px 22px', borderRadius: '6px' }}
           >
             {checkedOut ? 'Checkout 🏁' : 'Checkout'}
           </button>
@@ -113,8 +107,8 @@ export default function Dashboard() {
       </div>
 
       {/* 2. SUB-HEADER: Today's Date: */}
-      <div style={{ fontSize: '15px', color: '#475569', fontWeight: 500, marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #e2e8f0' }}>
-        <strong>Today's Date:</strong> {formatLongDate(new Date())}
+      <div style={{ fontSize: '15px', color: '#334155', fontWeight: 600, marginBottom: '16px', paddingBottom: '12px', borderBottom: '1.5px solid #cbd5e1' }}>
+        Today's Date: <span style={{ fontWeight: 400, color: '#64748b' }}>{formatLongDate(new Date())}</span>
       </div>
 
       {attSuccessMsg && (
@@ -141,14 +135,14 @@ export default function Dashboard() {
 
       {attError && <p className="form-error" style={{ marginBottom: '16px' }}>{attError}</p>}
 
-      {/* 3. TOP TABLE CARD: Day [ ] to Day [ ] | Emp Name | Project | Task | Checkin | Daily Hour | Weekly Hour */}
+      {/* 3. SECTION 1 (MAIN TABLE): Day [ ] to Day [ ] | Emp Name | Project | Task | Checkin | Daily Hour | Weekly Hour */}
       <WorkforceTaskOverviewTable
         key={refreshKey}
         currentUserId={profile?.id}
         today={today}
       />
 
-      {/* 4. TODAY'S TASK CARD: Today's Task | + Add Task */}
+      {/* 4. SECTION 2: Today's Task | + Add Task */}
       <TaskSection
         profile={profile}
         today={today}
@@ -158,40 +152,37 @@ export default function Dashboard() {
         }}
       />
 
-      {/* 6. WORK HISTORY & ATTENDANCE HISTORY */}
-      <WorkHistory profile={profile} />
-
-      <AttendanceHistory
+      {/* 5. SECTION 3: Today's My Attendance | Employee | Status */}
+      <MyTodayAttendance
         profile={profile}
-        weekMinutes={weekMinutes}
-        dayMinutes={dayMinutes}
+        attendance={attendance}
       />
 
-      {/* 7. BOTTOM CONTROLS: Logout / Change Pass (Right aligned as in wireframe) */}
+      {/* 6. BOTTOM CONTROLS: Logout / Change Pass (Right aligned as in wireframe diagram) */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '28px', flexWrap: 'wrap' }}>
         <button
           className="btn btn-outline"
           onClick={signOut}
-          style={{ fontWeight: 600, padding: '8px 22px' }}
+          style={{ fontWeight: 600, padding: '8px 22px', borderRadius: '6px' }}
         >
           Logout
         </button>
         <button
           className="btn btn-outline"
           onClick={() => setShowPasswordModal(true)}
-          style={{ fontWeight: 600, padding: '8px 22px' }}
+          style={{ fontWeight: 600, padding: '8px 22px', borderRadius: '6px' }}
         >
           Change Pass
         </button>
       </div>
 
-      {/* Admin Switch Link */}
+      {/* Discreet Admin Switch Footer */}
       <div style={{ marginTop: '24px', textAlign: 'center' }}>
         <Link
           to="/admin-login"
-          style={{ color: '#64748b', fontSize: '13px', textDecoration: 'none' }}
+          style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none' }}
         >
-          🛡️ Switch to Admin Portal &rarr;
+          🛡️ Admin Portal &rarr;
         </Link>
       </div>
 
